@@ -2,7 +2,7 @@ from smartgd.constants import PREDICTION_S3_BUCKET
 from smartgd.common.functools import normalize_args
 
 import pickle
-from typing import Optional
+from typing import Optional, Dict
 from typing_extensions import Self
 from cachetools import cached
 
@@ -37,11 +37,11 @@ class LayoutSyncer:
 
     @normalize_args
     @cached({})
-    def load(self, *, name: str, params: Optional[dict] = None) -> dict[..., np.ndarray]:
+    def load(self, *, name: str, params: Optional[dict] = None) -> Dict[..., np.ndarray]:
         with self.fs.open(self._get_file_path(name, params), "rb") as fin:
             return pickle.load(fin)
 
-    def evict_cache(self, *, name: str, params: Optional[dict] = None) -> Optional[dict[..., np.ndarray]]:
+    def evict_cache(self, *, name: str, params: Optional[dict] = None) -> Optional[Dict[..., np.ndarray]]:
         cache_key = self.load.cache_key(self=self, name=name, params=params)  # must be kw_only to match cache_key
         return self.load.cache.pop(cache_key, None)
 
