@@ -1,5 +1,7 @@
 from smartgd.common.jittools import TorchScriptUtils
 
+from typing import List
+
 from torch import jit
 import pytorch_lightning as L
 from lightning_lite.utilities import cloud_io
@@ -7,7 +9,7 @@ from lightning_lite.utilities import cloud_io
 
 class ModelScript(L.Callback):
 
-    def __init__(self, *, dirpath: str, modules: list[str]):
+    def __init__(self, *, dirpath: str, modules: List[str]):
         super().__init__()
         self.dirpath = dirpath
         self.fs = cloud_io.get_filesystem(dirpath)
