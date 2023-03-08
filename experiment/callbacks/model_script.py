@@ -1,7 +1,7 @@
 from smartgd.common.jittools import TorchScriptUtils
 
 from torch import jit
-import lightning as L
+import pytorch_lightning as L
 from lightning_lite.utilities import cloud_io
 
 
