@@ -4,7 +4,7 @@ import os
 import re
 import multiprocessing
 from functools import wraps
-from typing import Optional
+from typing import Optional, Type
 
 from tqdm.auto import tqdm
 import botocore
@@ -13,12 +13,12 @@ import torch_geometric as pyg
 
 
 # TODO: use s3fs async instead of boto3
-def s3_dataset_syncing(_cls: Optional[type[pyg.data.Dataset]] = None, /, *,
+def s3_dataset_syncing(_cls: Optional[Type[pyg.data.Dataset]] = None, /, *,
                        bucket_name: str = DATASET_S3_BUCKET):
 
     class Decorator:
 
-        def __init__(self, decorated: type[pyg.data.Dataset]):
+        def __init__(self, decorated: Type[pyg.data.Dataset]):
             self.decorated = decorated
 
         def __call__(self, *args,
