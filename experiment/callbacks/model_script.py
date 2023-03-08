@@ -1,4 +1,4 @@
-from smartgd.experiment.utils import TorchScriptUtils
+from smartgd.common.jittools import TorchScriptUtils
 
 from torch import jit
 import lightning as L

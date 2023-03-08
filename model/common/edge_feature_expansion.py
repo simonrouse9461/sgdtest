@@ -1,6 +1,6 @@
+from smartgd.constants import EPS
+from smartgd.common.jittools import jittable
 from .traced_module import TracedModule
-from smartgd.global_constants import EPS
-from smartgd.common.decorators import jittable
 
 from typing import Callable, Any, Optional
 from dataclasses import dataclass, asdict

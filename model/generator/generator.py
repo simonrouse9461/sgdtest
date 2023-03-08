@@ -1,14 +1,14 @@
+from smartgd.constants import EPS
+from smartgd.common.functools import default_kwargs
+from smartgd.common.jittools import jittable
+from smartgd.common.data import GraphLayout
+from ..common import EdgeFeatureExpansion
 from .generator_block import GeneratorBlock
 from .generator_layer import GeneratorLayer
-from smartgd.model.common.edge_feature_expansion import EdgeFeatureExpansion
-from smartgd.common.decorators import default_kwargs, jittable
-from smartgd.global_constants import EPS
-from smartgd.data.graph_layout import GraphLayout
 
 from dataclasses import dataclass
 from typing import Optional
 
-import torch
 from torch import nn
 
 

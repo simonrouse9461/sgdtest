@@ -1,6 +1,6 @@
+from smartgd.common.jittools import jittable
 from .mlp import MLP
 from .nnconv_basic_layer import NNConvBasicLayer
-from smartgd.common.decorators import jittable
 
 from dataclasses import dataclass, field
 from typing import Optional

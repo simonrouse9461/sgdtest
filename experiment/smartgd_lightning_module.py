@@ -1,19 +1,16 @@
-import numpy as np
-
-from smartgd.common.nn import (
+from smartgd.common.data import GraphLayout, BaseTransformation, RescaleByStress
+from smartgd.common.datasets import RomeDataset, BatchAppendColumn
+from smartgd.common.syncing import LayoutSyncer, ModelSyncer
+from .criteria import (
     CompositeCritic,
     RGANCriterion,
     BaseAdverserialCriterion,
-    BaseTransformation,
-    RescaleByStress
 )
-from smartgd.data import GraphLayout, LayoutManager, BatchAppendColumn, RomeDataset
-from .model_syncer import ModelSyncer
 from .mixins import LoggingMixin
-from .callbacks import PeriodicLRFinder
 
 from typing import Optional, Any
 
+import numpy as np
 import torch
 from torch import nn
 import pytorch_lightning as L
@@ -44,7 +41,7 @@ class SmartGDLightningModule(L.LightningModule, LoggingMixin):
         # Data
         self.dataset: Optional[pyg.data.Dataset] = None
         self.datamodule: Optional[L.LightningModule] = None
-        self.layout_manager: Optional[LayoutManager] = None
+        self.layout_manager: Optional[LayoutSyncer] = None
         self.real_layout_store: Optional[dict[str, np.ndarray]] = None
 
         # Functions
@@ -102,7 +99,7 @@ class SmartGDLightningModule(L.LightningModule, LoggingMixin):
             test_dataset=self.dataset[10000:11000],
             batch_size=self.hparams.batch_size,
         )
-        self.layout_manager = LayoutManager.get_default_manager(self.dataset.name)
+        self.layout_manager = LayoutSyncer.get_default_syncer(self.dataset.name)
         self.real_layout_store = self.layout_manager.load(name="neato")
 
     def train_dataloader(self) -> pyg.loader.DataLoader:

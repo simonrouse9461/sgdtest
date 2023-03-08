@@ -1,6 +1,6 @@
-from smartgd.model.common import EdgeFeatureExpansion
-from smartgd.common.decorators import jittable
-from smartgd.global_constants import EPS
+from smartgd.constants import EPS
+from smartgd.common.jittools import jittable
+from ..common import EdgeFeatureExpansion
 
 from dataclasses import dataclass
 from typing import Optional

@@ -1,5 +1,5 @@
+from smartgd.common.jittools import jittable
 from .linear_layer import LinearLayer
-from smartgd.common.decorators import jittable
 
 from dataclasses import dataclass
 from typing import Optional

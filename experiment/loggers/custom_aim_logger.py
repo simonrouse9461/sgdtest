@@ -1,4 +1,4 @@
-from smartgd.global_constants import (
+from smartgd.constants import (
     AIMSTACK_SERVER_URL, TRAIN_PREFIX, VAL_PREFIX, TEST_PREFIX
 )
 

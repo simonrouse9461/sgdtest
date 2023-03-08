@@ -1,7 +1,7 @@
-from smartgd.global_constants import (
+from smartgd.constants import (
     LIGHTNING_S3_BUCKET, AIMSTACK_UI_URL
 )
-from .callbacks import SaveMetadata, ModelScript
+from .callbacks import SaveMetadata
 from .loggers import CustomAimLogger
 
 import os

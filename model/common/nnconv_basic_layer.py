@@ -1,7 +1,7 @@
+from smartgd.common.jittools import jittable
+from smartgd.common.nn import ModuleFactory
 from .norm_wrappers import NormWrapper
 from .skip_connection import SkipConnection
-from smartgd.common.decorators import jittable
-from smartgd.common.nn.module_factory import ModuleFactory
 
 from dataclasses import dataclass
 from typing import Optional

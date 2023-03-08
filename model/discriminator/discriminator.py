@@ -1,9 +1,9 @@
+from smartgd.constants import EPS
+from smartgd.common.functools import default_kwargs
+from smartgd.common.jittools import jittable
+from smartgd.common.data import GraphLayout
+from ..common import EdgeFeatureExpansion, NNConvLayer
 from .discriminator_block import DiscriminatorBlock
-from smartgd.model.common import MLP, EdgeFeatureExpansion, NNConvLayer
-from smartgd.common.decorators import default_kwargs
-from smartgd.global_constants import EPS
-from smartgd.common.decorators import jittable
-from smartgd.data.graph_layout import GraphLayout
 
 from dataclasses import dataclass
 

@@ -1,9 +1,6 @@
-from smartgd.model.common.nnconv_layer import NNConvLayer
-from smartgd.model.common.nnconv_basic_layer import NNConvBasicLayer
-from smartgd.model.common.edge_feature_expansion import EdgeFeatureExpansion
-from smartgd.common.decorators import jittable
-from smartgd.global_constants import EPS
-
+from smartgd.constants import EPS
+from smartgd.common.jittools import jittable
+from ..common import NNConvLayer, NNConvBasicLayer, EdgeFeatureExpansion
 
 from dataclasses import dataclass
 from typing import Optional

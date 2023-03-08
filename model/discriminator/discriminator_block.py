@@ -1,7 +1,7 @@
+from smartgd.constants import EPS
+from smartgd.common.jittools import jittable
+from ..common import NNConvLayer, NNConvBasicLayer, EdgeFeatureExpansion
 from .discriminator_edge_net import DiscriminatorEdgeNet
-from smartgd.model.common import NNConvLayer, NNConvBasicLayer, EdgeFeatureExpansion
-from smartgd.common.decorators import jittable
-from smartgd import EPS
 
 from typing import Optional
 from dataclasses import dataclass

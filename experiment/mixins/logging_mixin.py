@@ -1,4 +1,4 @@
-from smartgd.global_constants import TRAIN_PREFIX, VAL_PREFIX, TEST_PREFIX
+from smartgd.constants import TRAIN_PREFIX, VAL_PREFIX, TEST_PREFIX
 
 from abc import ABC, abstractmethod
 

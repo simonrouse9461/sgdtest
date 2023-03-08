@@ -1,8 +1,8 @@
+from smartgd.constants import EPS
+from smartgd.common.jittools import jittable
+from ..common import SkipConnection, EdgeFeatureExpansion
 from .generator_layer import GeneratorLayer
 from .generator_feature_router import GeneratorFeatureRouter
-from smartgd.model.common import SkipConnection, EdgeFeatureExpansion
-from smartgd.common.decorators import jittable
-from smartgd.global_constants import EPS
 
 from dataclasses import dataclass
 from collections import defaultdict

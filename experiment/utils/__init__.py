@@ -1,1 +1,1 @@
-from .torchscript_utils import *
+from .detect_device import *
