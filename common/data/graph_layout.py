@@ -12,17 +12,17 @@ import torch_geometric as pyg
 
 @jit.script
 @jittable
-@dataclass(kw_only=True, eq=False, repr=False)
+@dataclass(eq=False, repr=False)
 class GraphLayout:
 
     @jittable
-    @dataclass(kw_only=True, eq=False, repr=False)
+    @dataclass(eq=False, repr=False)
     class GraphAttribute:
         n: torch.LongTensor
         m: torch.LongTensor
 
     @jittable
-    @dataclass(kw_only=True, eq=False, repr=False)
+    @dataclass(eq=False, repr=False)
     class NodeAttribute:
         laplacian_pe: torch.FloatTensor
         random_walk_pe: torch.FloatTensor
@@ -32,7 +32,7 @@ class GraphLayout:
             return torch.stack([self.laplacian_pe, self.random_walk_pe], dim=-1)
 
     @jittable
-    @dataclass(kw_only=True, eq=False, repr=False)
+    @dataclass(eq=False, repr=False)
     class EdgeAttribute:
         shortest_path: torch.FloatTensor
 
@@ -45,7 +45,7 @@ class GraphLayout:
             return torch.stack([self.shortest_path, self.k], dim=-1)
 
     @jittable
-    @dataclass(kw_only=True, eq=False, repr=False)
+    @dataclass(eq=False, repr=False)
     class EdgeIndex:
         mp: torch.LongTensor
         full: torch.LongTensor
