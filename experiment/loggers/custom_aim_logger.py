@@ -2,7 +2,7 @@ from smartgd.constants import (
     AIMSTACK_SERVER_URL, TRAIN_PREFIX, VAL_PREFIX, TEST_PREFIX
 )
 
-from typing import Optional, Any
+from typing import Optional, Any, Dict
 
 from pytorch_lightning.utilities import rank_zero_only
 from aim.pytorch_lightning import AimLogger
@@ -28,10 +28,10 @@ class CustomAimLogger(AimLogger):
         self._epoch_metrix_suffix = epoch_metrix_suffix
 
     @rank_zero_only
-    def log_metrics(self, metrics: dict[str, float], step: Optional[int] = None):
+    def log_metrics(self, metrics: Dict[str, float], step: Optional[int] = None):
         assert rank_zero_only.rank == 0, 'experiment tried to log from global_rank != 0'
 
-        metric_items: dict[str: Any] = {k: v for k, v in metrics.items()}
+        metric_items: Dict[str: Any] = {k: v for k, v in metrics.items()}
 
         epoch: Optional[int] = None
         if 'epoch' in metric_items:

@@ -1,20 +1,20 @@
 from smartgd.common.data import GraphLayout
 from .base_critic import BaseCritic
 
-from typing import Optional, Callable, TypeVar
+from typing import Optional, Callable, TypeVar, Dict
 from typing_extensions import Self
 
 import torch
 
 _Critic = TypeVar("_Critic", bound=BaseCritic)
 _CriticCls = type[_Critic]
-_PresetFunc = Callable[..., dict[str, float]]
+_PresetFunc = Callable[..., Dict[str, float]]
 
 
 class CompositeCritic(BaseCritic):
 
-    _critic_registry: dict[str, _Critic] = {}
-    _preset_registry: dict[str, dict[str, float]] = {}
+    _critic_registry: Dict[str, _Critic] = {}
+    _preset_registry: Dict[str, Dict[str, float]] = {}
 
     @classmethod
     def register_critic(cls, _name: str, /, *args, **kwargs) -> Callable[[_CriticCls], _CriticCls]:
@@ -31,7 +31,7 @@ class CompositeCritic(BaseCritic):
         return decorator
 
     @classmethod
-    def get_preset(cls, preset: str) -> dict[str, float]:
+    def get_preset(cls, preset: str) -> Dict[str, float]:
         return cls._preset_registry[preset]
 
     @classmethod
@@ -40,10 +40,10 @@ class CompositeCritic(BaseCritic):
                    batch_reduce=batch_reduce)
 
     def __init__(self, *,
-                 criteria_weights: dict[str, float],
+                 criteria_weights: Dict[str, float],
                  batch_reduce: Optional[str] = "mean"):
         super().__init__(batch_reduce=batch_reduce)
-        self.weights: dict[str, float] = criteria_weights
+        self.weights: Dict[str, float] = criteria_weights
         self.cached_scores = {key: None for key in self.weights}
 
     def _cache_scores(self, layout: GraphLayout):
@@ -64,14 +64,14 @@ class CompositeCritic(BaseCritic):
 
 
 @CompositeCritic.register_preset("stress_only")
-def stress_only() -> dict[str, float]:
+def stress_only() -> Dict[str, float]:
     return {
         'stress': 1.
     }
 
 
 @CompositeCritic.register_preset("human_preference")
-def human_preference() -> dict[str, float]:
+def human_preference() -> Dict[str, float]:
     return {
         'stress': 0.00029434361190166397,
         # 'xing': 0.0007957665417401572,

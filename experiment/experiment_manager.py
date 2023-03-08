@@ -6,7 +6,7 @@ from .loggers import CustomAimLogger
 
 import os
 import textwrap
-from typing import Optional, Any
+from typing import Optional, Any, List, Dict
 
 import natsort
 from rich.console import Console
@@ -126,7 +126,7 @@ class ExperimentManager:
         self._experiment_description = value
 
     @property
-    def experiment_metadata(self) -> Optional[dict[str, Any]]:
+    def experiment_metadata(self) -> Optional[Dict[str, Any]]:
         return self.experiment_meta_callback.load_metadata()
 
     @property
@@ -152,14 +152,14 @@ class ExperimentManager:
             self.aim.experiment.description = value
 
     @property
-    def run_metadata(self) -> Optional[dict[str, Any]]:
+    def run_metadata(self) -> Optional[Dict[str, Any]]:
         return self.run_meta_callback.load_metadata()
 
-    def loggers(self, *additional: Logger) -> list[Logger]:
-        managed: list[Logger] = [self.tensorboard, self.aim]
+    def loggers(self, *additional: Logger) -> List[Logger]:
+        managed: List[Logger] = [self.tensorboard, self.aim]
         return managed + list(additional)
 
-    def callbacks(self, *additional: Callback) -> list[Callback]:
+    def callbacks(self, *additional: Callback) -> List[Callback]:
         checkpoint_callback = ModelCheckpoint(
             dirpath=self.checkpoint_dir,
             filename=f"{{epoch}}-{{step}}",
@@ -170,7 +170,7 @@ class ExperimentManager:
         #     dirpath=f"{self.log_dir}/scripts",
         #     modules=["generator", "discriminator"]
         # )
-        managed: list[Callback] = [
+        managed: List[Callback] = [
             checkpoint_callback,
             self.experiment_meta_callback,
             self.run_meta_callback
@@ -188,10 +188,10 @@ class ExperimentManager:
         return None
 
     def trainer_init_args(self, *,
-                          loggers: Optional[list[Logger]] = None,
-                          callbacks: Optional[list[Callback]] = None) -> dict[str, Any]:
+                          loggers: Optional[List[Logger]] = None,
+                          callbacks: Optional[List[Callback]] = None) -> Dict[str, Any]:
         return dict(logger=self.loggers(*loggers or []),
                     callbacks=self.callbacks(*callbacks or []))
 
-    def trainer_fit_args(self) -> dict[str, Any]:
+    def trainer_fit_args(self) -> Dict[str, Any]:
         return dict(ckpt_path=self.last_ckpt_path)

@@ -8,7 +8,7 @@ from .criteria import (
 )
 from .mixins import LoggingMixin
 
-from typing import Optional, Any
+from typing import Optional, Any, Dict, List
 
 import numpy as np
 import torch
@@ -24,7 +24,7 @@ class SmartGDLightningModule(L.LightningModule, LoggingMixin):
                  generator_version: Optional[str] = None,
                  discriminator_name: Optional[str] = None,
                  discriminator_version: Optional[str] = None,
-                 criteria: str | dict[str, float] = "stress_only",
+                 criteria: str | Dict[str, float] = "stress_only",
                  alternating_mode: str = "step",
                  generator_frequency: int | float = 1,
                  discriminator_frequency: int | float = 1,
@@ -42,7 +42,7 @@ class SmartGDLightningModule(L.LightningModule, LoggingMixin):
         self.dataset: Optional[pyg.data.Dataset] = None
         self.datamodule: Optional[L.LightningModule] = None
         self.layout_manager: Optional[LayoutSyncer] = None
-        self.real_layout_store: Optional[dict[str, np.ndarray]] = None
+        self.real_layout_store: Optional[Dict[str, np.ndarray]] = None
 
         # Functions
         self.adversarial_criterion: BaseAdverserialCriterion = RGANCriterion()
@@ -123,7 +123,7 @@ class SmartGDLightningModule(L.LightningModule, LoggingMixin):
                 version=self.hparams.discriminator["meta"]["md5_digest"]
             )
 
-    def on_load_checkpoint(self, checkpoint: dict[str, Any]):
+    def on_load_checkpoint(self, checkpoint: Dict[str, Any]):
         self.generator = self.syncer.load(
             name=checkpoint["hparams"]["generator"]["meta"]["model_name"],
             version=checkpoint["hparams"]["generator"]["meta"]["md5_digest"]
@@ -134,7 +134,7 @@ class SmartGDLightningModule(L.LightningModule, LoggingMixin):
         )
         self.real_layout_store = checkpoint["real_layout_store"]
 
-    def on_save_checkpoint(self, checkpoint: dict[str, Any]):
+    def on_save_checkpoint(self, checkpoint: Dict[str, Any]):
         checkpoint["real_layout_store"] = self.real_layout_store
 
     def forward(self, batch: pyg.data.Data):
@@ -143,7 +143,7 @@ class SmartGDLightningModule(L.LightningModule, LoggingMixin):
         layout = self.generator(layout)
         return layout
 
-    def configure_callbacks(self) -> L.Callback | list[L.Callback]:
+    def configure_callbacks(self) -> L.Callback | List[L.Callback]:
         return [
             # PeriodicLRFinder(
             #     interval=1,
