@@ -262,7 +262,7 @@ class SmartGDLightningModule(L.LightningModule, LoggingMixin):
         batch = step_output["batch"]
         for data in batch.to_data_list():
             if data.flagged.item():
-                self.real_layout_store[data.name] = data.fake_pos.detach().numpy()
+                self.real_layout_store[data.name] = data.fake_pos.detach().cpu().numpy()
         return step_output["loss"]
 
     def validation_step(self, batch: pyg.data.Data, batch_idx: int):
