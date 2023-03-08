@@ -143,7 +143,7 @@ class SmartGDLightningModule(L.LightningModule, LoggingMixin):
         layout = self.generator(layout)
         return layout
 
-    def configure_callbacks(self) -> L.Callback | List[L.Callback]:
+    def configure_callbacks(self) -> Union[L.Callback, List[L.Callback]]:
         return [
             # PeriodicLRFinder(
             #     interval=1,
