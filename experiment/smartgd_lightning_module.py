@@ -8,7 +8,7 @@ from .criteria import (
 )
 from .mixins import LoggingMixin
 
-from typing import Optional, Any, Dict, List
+from typing import Optional, Any, Union, Dict, List
 
 import numpy as np
 import torch
