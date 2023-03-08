@@ -1,13 +1,13 @@
 from smartgd.common.data import GraphLayout
 from .base_critic import BaseCritic
 
-from typing import Optional, Callable, TypeVar, Dict
+from typing import Optional, Callable, TypeVar, Dict, Type
 from typing_extensions import Self
 
 import torch
 
 _Critic = TypeVar("_Critic", bound=BaseCritic)
-_CriticCls = type[_Critic]
+_CriticCls = Type[_Critic]
 _PresetFunc = Callable[..., Dict[str, float]]
 
 
