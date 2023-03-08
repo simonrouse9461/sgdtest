@@ -41,20 +41,30 @@ class CustomAimLogger(AimLogger):
             name = k
             context = {}
             if self._train_metric_prefix and name.startswith(self._train_metric_prefix):
-                name = name.removeprefix(self._train_metric_prefix)
+                name = self.removeprefix(name, self._train_metric_prefix)
                 context['subset'] = 'train'
             elif self._test_metric_prefix and name.startswith(self._test_metric_prefix):
-                name = name.removeprefix(self._test_metric_prefix)
+                name = self.removeprefix(name, self._test_metric_prefix)
                 context['subset'] = 'test'
             elif self._val_metric_prefix and name.startswith(self._val_metric_prefix):
-                name = name.removeprefix(self._val_metric_prefix)
+                name = self.removeprefix(name, self._val_metric_prefix)
                 context['subset'] = 'val'
 
             if self._step_metrix_suffix and name.endswith(self._step_metrix_suffix):
-                name = name.removesuffix(self._step_metrix_suffix)
+                name = self.removesuffix(name, self._step_metrix_suffix)
                 context['aggr'] = 'step'
             elif self._epoch_metrix_suffix and name.endswith(self._epoch_metrix_suffix):
-                name = name.removesuffix(self._epoch_metrix_suffix)
+                name = self.removesuffix(name, self._epoch_metrix_suffix)
                 context['aggr'] = 'epoch'
 
             self.experiment.track(v, name=name, step=step, epoch=epoch, context=context)
+
+    def removeprefix(self, text: str, prefix: str):
+        if text.startswith(prefix):
+            return text[len(prefix):]
+        return text
+
+    def removesuffix(self, text: str, suffix: str):
+        if text.endswith(suffix):
+            return text[:-len(suffix)]
+        return text
