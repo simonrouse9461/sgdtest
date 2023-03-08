@@ -1,7 +1,7 @@
 from smartgd.constants import MODEL_S3_BUCKET
 from ..jittools import TorchScriptUtils
 
-from typing import Optional, Callable, Any
+from typing import Optional, Callable, Any, Tuple, Union, List
 import json
 import datetime
 import tempfile
@@ -84,7 +84,7 @@ class ModelSyncer:
              model: nn.Module,
              *,
              name: Optional[str] = None,
-             version: Optional[str | list[str]] = None,
+             version: Optional[Union[str, List[str]]] = None,
              configuration: Optional[str] = None,  # TODO
              latest: bool = True,
              metadata: Optional[dict] = None) -> dict:
@@ -111,7 +111,7 @@ class ModelSyncer:
 
     def _check_before_load(self,
                            name: Optional[str] = None,
-                           version: Optional[str] = None) -> tuple[str, str]:
+                           version: Optional[str] = None) -> Tuple[str, str]:
         if name is None:
             name = self.DEFAULT_MODEL_NAME
         if version is None:
@@ -149,7 +149,7 @@ class ModelSyncer:
                      name: Optional[str] = None,
                      version: Optional[str] = None,
                      new_name: Optional[str] = None,
-                     new_version: Optional[str | list[str]] = None,
+                     new_version: Optional[Union[str, List[str]]] = None,
                      latest: bool = False) -> dict:
         if new_name is None:
             new_name = name
