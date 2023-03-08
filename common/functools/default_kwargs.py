@@ -1,10 +1,10 @@
 import inspect
-from typing import Callable, Any, Optional
+from typing import Callable, Any, Optional, Union
 from functools import wraps
 
 
-def default_kwargs(_kwargs_or_func: Optional[dict] | Callable = None, /, *,
-                   undefined: Any | Callable[[Any], bool] = Ellipsis):
+def default_kwargs(_kwargs_or_func: Union[Optional[dict], Callable] = None, /, *,
+                   undefined: Union[Any, Callable[[Any], bool]] = Ellipsis):
 
     if _kwargs_or_func is None:
         _kwargs_or_func = {}
