@@ -2,7 +2,7 @@ from smartgd.common.jittools import jittable
 
 import shelve
 from dataclasses import dataclass
-from typing import Mapping, Optional
+from typing import Mapping, Optional, Union
 from typing_extensions import Self
 
 import torch
@@ -119,7 +119,7 @@ class GraphLayout:
     @jit.unused
     def _from_pos(cls,
                   pos: torch.Tensor,
-                  data: pyg.data.Data | pyg.data.Batch):  # TODO: figure out how to use `-> Self`
+                  data: Union[pyg.data.Data, pyg.data.Batch]):  # TODO: figure out how to use `-> Self`
         if isinstance(data, pyg.data.Batch):
             batch_index = data.batch
         else:
