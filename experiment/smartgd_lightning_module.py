@@ -24,10 +24,10 @@ class SmartGDLightningModule(L.LightningModule, LoggingMixin):
                  generator_version: Optional[str] = None,
                  discriminator_name: Optional[str] = None,
                  discriminator_version: Optional[str] = None,
-                 criteria: str | Dict[str, float] = "stress_only",
+                 criteria: Union[str, Dict[str, float]] = "stress_only",
                  alternating_mode: str = "step",
-                 generator_frequency: int | float = 1,
-                 discriminator_frequency: int | float = 1,
+                 generator_frequency: Union[int, float] = 1,
+                 discriminator_frequency: Union[int, float] = 1,
                  batch_size: int = 16,
                  learning_rate: float = 1e-3,
                  lr_gamma: float = 0.998):
