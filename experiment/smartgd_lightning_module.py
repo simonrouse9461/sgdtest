@@ -196,17 +196,17 @@ class SmartGDLightningModule(L.LightningModule, LoggingMixin):
 
     def configure_optimizers(self) -> Any:
         total_frequency = self.hparams.discriminator_frequency + self.hparams.generator_frequency
-        match self.hparams.alternating_mode:
-            case "step":
-                discriminator_steps = self.hparams.discriminator_frequency
-                generator_steps = self.hparams.generator_frequency
-            case "epoch":
-                steps_per_epoch = len(self.train_dataloader())
-                total_steps = int(steps_per_epoch * total_frequency)
-                discriminator_steps = int(steps_per_epoch * self.hparams.discriminator_frequency)
-                generator_steps = total_steps - discriminator_steps
-            case _ as mode:
-                assert False, f"Unknown alternating mode '{mode}'."
+        # TODO: match case
+        if self.hparams.alternating_mode == "step":
+            discriminator_steps = self.hparams.discriminator_frequency
+            generator_steps = self.hparams.generator_frequency
+        elif self.hparams.alternating_mode == "epoch":
+            steps_per_epoch = len(self.train_dataloader())
+            total_steps = int(steps_per_epoch * total_frequency)
+            discriminator_steps = int(steps_per_epoch * self.hparams.discriminator_frequency)
+            generator_steps = total_steps - discriminator_steps
+        else:
+            assert False, f"Unknown alternating mode '{self.hparams.alternating_mode}'."
         return (
             self.discriminator_optimizer(discriminator_steps),
             self.generator_optimizer(generator_steps)
@@ -243,13 +243,13 @@ class SmartGDLightningModule(L.LightningModule, LoggingMixin):
         good_pred = torch.cat([real_pred[positive], fake_pred[negative]])
         bad_pred = torch.cat([fake_pred[positive], real_pred[negative]])
 
-        match optimizer_idx:
-            case 0:  # discriminator
-                loss = self.adversarial_criterion(encourage=good_pred, discourage=bad_pred)
-            case 1:  # generator
-                loss = self.adversarial_criterion(encourage=fake_pred, discourage=real_pred)
-            case _ as idx:
-                assert False, f"Unknown optimizer with index {idx}."
+        # TODO: match case
+        if optimizer_idx == 0:  # discriminator
+            loss = self.adversarial_criterion(encourage=good_pred, discourage=bad_pred)
+        elif optimizer_idx == 1:  # generator
+            loss = self.adversarial_criterion(encourage=fake_pred, discourage=real_pred)
+        else:
+            assert False, f"Unknown optimizer with index {optimizer_idx}."
 
         batch = self.append_column(batch=batch, tensor=fake_layout.pos, name="fake_pos")
         batch = self.append_column(batch=batch, tensor=negative, name="flagged")
