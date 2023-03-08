@@ -9,7 +9,7 @@ from torch import nn
 from torch.jit._dataclass_impls import synthesize__init__
 
 
-T = TypeVar("T", bound=type[...])
+T = TypeVar("T", bound=type)
 
 
 # TODO: support __eq__ and __repr__
