@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Optional, List
 
 import torch
 from torch import nn
@@ -14,7 +14,7 @@ class BatchAppendColumn(nn.Module):
                 batch: pyg.data.Batch,
                 tensor: torch.Tensor,
                 name: str,
-                like: Optional[str] = None) -> list[torch.Tensor]:
+                like: Optional[str] = None) -> List[torch.Tensor]:
         data_list = batch.to_data_list()
         if not like:
             for col, _ in data_list[0]:
