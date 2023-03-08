@@ -145,7 +145,7 @@ class GraphLayout:
     @jit.unused
     def _from_kvstore(cls,
                       kvstore: Mapping,
-                      data: pyg.data.Data | pyg.data.Batch):  # TODO: figure out how to use `-> Self`
+                      data: Union[pyg.data.Data, pyg.data.Batch]):  # TODO: figure out how to use `-> Self`
         if isinstance(data, pyg.data.Batch):
             names = data.name
         else:
@@ -157,7 +157,7 @@ class GraphLayout:
     @classmethod
     @jit.unused
     def from_data(cls,
-                  data: pyg.data.Data | pyg.data.Batch,
+                  data: Union[pyg.data.Data, pyg.data.Batch],
                   pos: Optional[torch.Tensor] = None,
                   kvstore: Optional[Mapping] = None):  # TODO: figure out how to use `-> Self`
         if pos:
