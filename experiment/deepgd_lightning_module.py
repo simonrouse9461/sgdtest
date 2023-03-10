@@ -17,17 +17,12 @@ import pytorch_lightning as L
 import torch_geometric as pyg
 
 
-class SmartGDLightningModule(L.LightningModule, LoggingMixin):
+class DeepGDLightningModule(L.LightningModule, LoggingMixin):
     def __init__(self, *,
                  dataset_name: str,
                  generator_name: Optional[str] = None,
                  generator_version: Optional[str] = None,
-                 discriminator_name: Optional[str] = None,
-                 discriminator_version: Optional[str] = None,
                  criteria: Union[str, Dict[str, float]] = "stress_only",
-                 alternating_mode: str = "step",
-                 generator_frequency: Union[int, float] = 1,
-                 discriminator_frequency: Union[int, float] = 1,
                  batch_size: int = 16,
                  learning_rate: float = 1e-3,
                  lr_gamma: float = 0.998):
@@ -36,13 +31,11 @@ class SmartGDLightningModule(L.LightningModule, LoggingMixin):
         # Models
         self.syncer: ModelSyncer = ModelSyncer()
         self.generator: Optional[nn.Module] = None
-        self.discriminator: Optional[nn.Module] = None
 
         # Data
         self.dataset: Optional[pyg.data.Dataset] = None
         self.datamodule: Optional[L.LightningModule] = None
         self.layout_manager: Optional[LayoutSyncer] = None
-        self.real_layout_store: Optional[Dict[str, np.ndarray]] = None
 
         # Functions
         self.adversarial_criterion: BaseAdverserialCriterion = RGANCriterion()
@@ -69,21 +62,7 @@ class SmartGDLightningModule(L.LightningModule, LoggingMixin):
                     serialization=str
                 )
             ),
-            discriminator=dict(
-                meta=self.syncer.load_metadata(
-                    name=discriminator_name,
-                    version=discriminator_version
-                ),
-                args=self.syncer.load_arguments(
-                    name=discriminator_name,
-                    version=discriminator_version,
-                    serialization=str
-                )
-            ),
             criteria_weights=self.critic.weights,
-            alternating_mode=alternating_mode,
-            generator_frequency=generator_frequency,
-            discriminator_frequency=discriminator_frequency,
             batch_size=batch_size,
             learning_rate=learning_rate,
             lr_gamma=lr_gamma
@@ -100,7 +79,6 @@ class SmartGDLightningModule(L.LightningModule, LoggingMixin):
             batch_size=self.hparams.batch_size,
         )
         self.layout_manager = LayoutSyncer.get_default_syncer(self.dataset.name)
-        self.real_layout_store = self.layout_manager.load(name="neato")
 
     def train_dataloader(self) -> pyg.loader.DataLoader:
         return self.datamodule.train_dataloader()
@@ -117,25 +95,15 @@ class SmartGDLightningModule(L.LightningModule, LoggingMixin):
                 name=self.hparams.generator["meta"]["model_name"],
                 version=self.hparams.generator["meta"]["md5_digest"]
             )
-        if not self.discriminator:
-            self.discriminator = self.syncer.load(
-                name=self.hparams.discriminator["meta"]["model_name"],
-                version=self.hparams.discriminator["meta"]["md5_digest"]
-            )
 
     def on_load_checkpoint(self, checkpoint: Dict[str, Any]):
         self.generator = self.syncer.load(
             name=checkpoint["hyper_parameters"]["generator"]["meta"]["model_name"],
             version=checkpoint["hyper_parameters"]["generator"]["meta"]["md5_digest"]
         )
-        self.discriminator = self.syncer.load(
-            name=checkpoint["hyper_parameters"]["discriminator"]["meta"]["model_name"],
-            version=checkpoint["hyper_parameters"]["discriminator"]["meta"]["md5_digest"]
-        )
-        self.real_layout_store = checkpoint["real_layout_store"]
 
     def on_save_checkpoint(self, checkpoint: Dict[str, Any]):
-        checkpoint["real_layout_store"] = self.real_layout_store
+        pass
 
     def forward(self, batch: pyg.data.Data):
         layout = GraphLayout.from_data(data=batch)
@@ -156,7 +124,7 @@ class SmartGDLightningModule(L.LightningModule, LoggingMixin):
             )
         ]
 
-    def generator_optimizer(self, steps: int) -> dict:
+    def generator_optimizer(self) -> dict:
         return dict(
             optimizer=(optimizer := torch.optim.AdamW(
                 params=self.generator.parameters(),
@@ -172,45 +140,10 @@ class SmartGDLightningModule(L.LightningModule, LoggingMixin):
                 ),
                 frequency=1
             ),
-            frequency=steps
-        )
-
-    def discriminator_optimizer(self, steps: int) -> dict:
-        return dict(
-            optimizer=(optimizer := torch.optim.AdamW(
-                params=self.discriminator.parameters(),
-                lr=self.hparams.learning_rate
-            )),
-            lr_scheduler=dict(
-                name="discriminator_optimizer",
-                scheduler=torch.optim.lr_scheduler.ExponentialLR(
-                    optimizer=optimizer,
-                    gamma=self.hparams.lr_gamma,
-                    last_epoch=self.current_epoch - 1,
-                    verbose=True
-                ),
-                frequency=1
-            ),
-            frequency=steps
         )
 
     def configure_optimizers(self) -> Any:
-        total_frequency = self.hparams.discriminator_frequency + self.hparams.generator_frequency
-        # TODO: match case
-        if self.hparams.alternating_mode == "step":
-            discriminator_steps = self.hparams.discriminator_frequency
-            generator_steps = self.hparams.generator_frequency
-        elif self.hparams.alternating_mode == "epoch":
-            steps_per_epoch = len(self.train_dataloader())
-            total_steps = int(steps_per_epoch * total_frequency)
-            discriminator_steps = int(steps_per_epoch * self.hparams.discriminator_frequency)
-            generator_steps = total_steps - discriminator_steps
-        else:
-            assert False, f"Unknown alternating mode '{self.hparams.alternating_mode}'."
-        return (
-            self.discriminator_optimizer(discriminator_steps),
-            self.generator_optimizer(generator_steps)
-        )
+        return self.generator_optimizer()
 
     # def configure_optimizers(self) -> Any:
     #     return dict(
@@ -230,40 +163,15 @@ class SmartGDLightningModule(L.LightningModule, LoggingMixin):
     #         )
     #     )
 
-    def training_step(self, batch: pyg.data.Batch, batch_idx: int, optimizer_idx: int) -> dict:
+    def training_step(self, batch: pyg.data.Batch, batch_idx: int) -> dict:
         fake_layout = self.canonicalize(self(batch))
-        fake_pred = self.discriminator(fake_layout)
         fake_score, fake_raw_scores = self.critic(fake_layout), self.critic.get_raw_scores()
 
-        real_layout = self.canonicalize(GraphLayout.from_data(data=batch, kvstore=self.real_layout_store))
-        real_pred = self.discriminator(real_layout)
-        real_score = self.critic(real_layout)
-
-        positive, negative = real_score > fake_score, real_score < fake_score
-        good_pred = torch.cat([real_pred[positive], fake_pred[negative]])
-        bad_pred = torch.cat([fake_pred[positive], real_pred[negative]])
-
-        # TODO: match case
-        if optimizer_idx == 0:  # discriminator
-            loss = self.adversarial_criterion(encourage=good_pred, discourage=bad_pred)
-        elif optimizer_idx == 1:  # generator
-            loss = self.adversarial_criterion(encourage=fake_pred, discourage=real_pred)
-        else:
-            assert False, f"Unknown optimizer with index {optimizer_idx}."
-
-        batch = self.append_column(batch=batch, tensor=fake_layout.pos, name="fake_pos")
-        batch = self.append_column(batch=batch, tensor=negative, name="flagged")
+        loss = self.adversarial_criterion(encourage=fake_score, discourage=-fake_score)
 
         self.log_train(loss=loss.item(), score=fake_score.mean().item(),
                        **{k: v.mean().item() for k, v in fake_raw_scores.items()})
-        return dict(loss=loss, batch=batch)
-
-    def training_step_end(self, step_output: dict) -> torch.Tensor:
-        batch = step_output["batch"]
-        for data in batch.to_data_list():
-            if data.flagged.item():
-                self.real_layout_store[data.name] = data.fake_pos.detach().cpu().numpy()
-        return step_output["loss"]
+        return dict(loss=loss)
 
     def validation_step(self, batch: pyg.data.Data, batch_idx: int):
         fake_layout = self.canonicalize(self(batch))

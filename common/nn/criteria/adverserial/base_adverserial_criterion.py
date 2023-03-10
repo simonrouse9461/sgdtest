@@ -1,4 +1,4 @@
-from smartgd.common.nn import Reduce
+from ...ops import Reduce
 
 from typing import Optional
 from abc import ABC, abstractmethod

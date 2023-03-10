@@ -1,5 +1,5 @@
-from smartgd.common.nn import SparseSort
 from smartgd.common.data import GraphLayout
+from ...ops import SparseSort
 from .base_critic import BaseCritic
 from .composite_critic import CompositeCritic
 

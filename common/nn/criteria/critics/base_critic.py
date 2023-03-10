@@ -1,5 +1,5 @@
-from smartgd.common.nn import Reduce
 from smartgd.common.data import GraphLayout
+from ...ops import Reduce
 
 from typing import Optional
 from abc import ABC, abstractmethod

@@ -16,6 +16,6 @@ class Stress(BaseCritic):
         super().__init__(batch_reduce=batch_reduce)
 
     def compute(self, layout: GraphLayout) -> torch.Tensor:
-        dist = layout.full_dst_pos.sub(layout.full_src_pos).norm(dim=1)
+        dist = torch.norm(layout.full_dst_pos - layout.full_src_pos, 2, 1)
         edge_stress = dist.sub(layout.edge_attr.shortest_path).abs().div(layout.edge_attr.shortest_path).square()
         return torch_scatter.scatter(edge_stress,  layout.full_batch_index)
