@@ -42,14 +42,14 @@ class Discriminator(nn.Module):
     edge_feat_expansion: EdgeFeatureExpansion.Expansions = EdgeFeatureExpansion.Expansions(
         src_feat=True,
         dst_feat=True,
-        unit_vec=True,
-        vec_norm=True,
-        vec_norm_inv=True,
-        vec_norm_square=True,
-        vec_norm_inv_square=True,
-        edge_attr_inv=True,
-        edge_attr_square=True,
-        edge_attr_inv_square=True
+        unit_vec=False,
+        vec_norm=False,
+        vec_norm_inv=False,
+        vec_norm_square=False,
+        vec_norm_inv_square=False,
+        edge_attr_inv=False,
+        edge_attr_square=False,
+        edge_attr_inv_square=False
     )
     eps: float = EPS
 
@@ -76,14 +76,16 @@ class Discriminator(nn.Module):
             eps=self.eps
         )
 
-        self.readout = pyg.nn.aggr.MultiAggregation(
-            aggrs=["sum", "mean", "max"],
-            mode="proj",
-            mode_kwargs=dict(
-                in_channels=self.params.hidden_width,
-                out_channels=1
-            )
-        )
+        # self.readout = pyg.nn.aggr.MultiAggregation(
+        #     aggrs=["sum", "mean", "max"],
+        #     mode="proj",
+        #     mode_kwargs=dict(
+        #         in_channels=self.params.hidden_width,
+        #         out_channels=1
+        #     )
+        # )
+
+        self.lin = nn.Linear(self.params.hidden_width, 1)
 
     def forward(self, layout: GraphLayout) -> torch.Tensor:
         node_feat = self.block(
@@ -92,5 +94,7 @@ class Discriminator(nn.Module):
             edge_attr=layout.edge_attr.all,
             batch_index=layout.batch
         )
-        outputs = self.readout(node_feat, layout.batch).flatten()
-        return outputs
+        # outputs = self.readout(node_feat, layout.batch)
+        outputs = pyg.nn.global_add_pool(node_feat, layout.batch)
+        outputs = self.lin(outputs)
+        return outputs.flatten()
