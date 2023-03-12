@@ -1,4 +1,11 @@
-from smartgd.common.data import GraphLayout, BaseTransformation, RescaleByStress
+from smartgd.common.data import (
+    GraphLayout,
+    BaseTransformation,
+    RescaleByStress,
+    Compose,
+    Center,
+    NormalizeRotation
+)
 from smartgd.common.datasets import RomeDataset, BatchAppendColumn
 from smartgd.common.syncing import LayoutSyncer, ModelSyncer
 from smartgd.common.nn.criteria import (
@@ -48,7 +55,11 @@ class SmartGDLightningModule(BaseLightningModule):
         # Functions
         self.critic: Optional[CompositeCritic] = None
         self.adversarial_criterion: BaseAdverserialCriterion = RGANCriterion()
-        self.canonicalize: BaseTransformation = RescaleByStress()
+        self.canonicalize: BaseTransformation = Compose(
+            Center(),
+            NormalizeRotation(),
+            RescaleByStress()
+        )
         self.append_column: BatchAppendColumn = BatchAppendColumn()
 
     def generate_hyperparameters(self, config: Config) -> Dict[str, Any]:
@@ -239,8 +250,8 @@ class SmartGDLightningModule(BaseLightningModule):
         good_pred = torch.cat([real_pred[positive], fake_pred[negative]])
         bad_pred = torch.cat([fake_pred[positive], real_pred[negative]])
 
-        # discriminator_loss = self.adversarial_criterion(encourage=good_pred, discourage=bad_pred)
-        discriminator_loss = ((fake_pred + fake_score.log()).square() + (real_pred + real_score.log()).square()).mean()
+        discriminator_loss = self.adversarial_criterion(encourage=good_pred, discourage=bad_pred)
+        # discriminator_loss = ((fake_pred + fake_score.log()).square() + (real_pred + real_score.log()).square()).mean()
         generator_loss = self.adversarial_criterion(encourage=fake_pred, discourage=real_pred)
 
         # TODO: match case
