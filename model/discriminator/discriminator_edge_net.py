@@ -27,7 +27,7 @@ class DiscriminatorEdgeNet(nn.Module):
         hidden_act: str = "leaky_relu"
         bn: Optional[str] = "batch_norm"
         dp: float = 0.0
-        residual: bool = False
+        residual: bool = True
 
     params: Params
     config: Config = Config()

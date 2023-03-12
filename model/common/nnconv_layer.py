@@ -30,7 +30,7 @@ class NNConvLayer(nn.Module):
         out_act: Optional[str] = None
         bn: Optional[str] = "batch_norm"
         dp: float = 0.0
-        residual: bool = False
+        residual: bool = True
 
     params: NNConvBasicLayer.Params
     nnconv_config: NNConvConfig = NNConvConfig()

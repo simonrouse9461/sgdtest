@@ -250,7 +250,8 @@ class SmartGDLightningModule(BaseLightningModule):
         good_pred = torch.cat([real_pred[positive], fake_pred[negative]])
         bad_pred = torch.cat([fake_pred[positive], real_pred[negative]])
 
-        discriminator_loss = self.adversarial_criterion(encourage=good_pred, discourage=bad_pred)
+        # discriminator_loss = self.adversarial_criterion(encourage=good_pred, discourage=bad_pred)
+        discriminator_loss = self.adversarial_criterion(encourage=real_pred, discourage=fake_pred)
         # discriminator_loss = ((fake_pred + fake_score.log()).square() + (real_pred + real_score.log()).square()).mean()
         generator_loss = self.adversarial_criterion(encourage=fake_pred, discourage=real_pred)
 
