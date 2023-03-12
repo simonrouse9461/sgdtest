@@ -20,7 +20,7 @@ import torch_geometric as pyg
 
 class SmartGDLightningModule(BaseLightningModule):
 
-    @dataclass(kw_only=True)
+    @dataclass
     class Config:
         dataset_name: str
         generator_spec: Union[Optional[str], Tuple[Optional[str], Optional[str]]] = None

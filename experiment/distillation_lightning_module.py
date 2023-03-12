@@ -1,12 +1,6 @@
 from smartgd.common.data import GraphLayout, BaseTransformation, RescaleByStress
 from smartgd.common.datasets import RomeDataset, BatchAppendColumn
 from smartgd.common.syncing import LayoutSyncer, ModelSyncer
-from smartgd.common.nn.criteria import (
-    CompositeCritic,
-    RGANCriterion,
-    BaseAdverserialCriterion,
-)
-from .mixins import LoggingMixin
 from .base_lightning_module import BaseLightningModule
 
 from dataclasses import dataclass
@@ -21,7 +15,7 @@ import torch_geometric as pyg
 
 class DistillationLightningModule(BaseLightningModule):
 
-    @dataclass(kw_only=True)
+    @dataclass
     class Config:
         dataset_name: str
         teacher_spec: Union[Optional[str], Tuple[Optional[str], Optional[str]]] = None
@@ -31,19 +25,15 @@ class DistillationLightningModule(BaseLightningModule):
         lr_gamma: float = 0.998
 
     def __init__(self, config: Optional[Config]):
-        super().__init__()
+        super().__init__(config)
 
         # Models
-        self.syncer: ModelSyncer = ModelSyncer()
         self.teacher: Optional[nn.Module] = None
         self.student: Optional[nn.Module] = None
 
         # Functions
         self.canonicalize: BaseTransformation = RescaleByStress()
         self.append_column = BatchAppendColumn()
-
-        if config:
-            self.save_hyperparameters(self.generate_hyperparameters(config))
 
     def generate_hyperparameters(self, config: Config) -> Dict[str, Any]:
         # TODO: load hparams directly from hparams.yml for existing experiments
