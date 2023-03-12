@@ -173,7 +173,7 @@ class DeepGDLightningModule(L.LightningModule, LoggingMixin):
                        **{k: v.mean().item() for k, v in fake_raw_scores.items()})
         return dict(loss=loss)
 
-    def validation_step(self, batch: pyg.data.Data, batch_idx: int):
+    def validation_step(self, batch: pyg.data.Batch, batch_idx: int):
         fake_layout = self.canonicalize(self(batch))
         score, raw_scores = self.critic(fake_layout), self.critic.get_raw_scores()
         self.log_val(score=score.mean().item(),

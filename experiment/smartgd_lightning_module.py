@@ -6,9 +6,10 @@ from smartgd.common.nn.criteria import (
     RGANCriterion,
     BaseAdverserialCriterion,
 )
-from .mixins import LoggingMixin
+from .base_lightning_module import BaseLightningModule
 
-from typing import Optional, Any, Union, Dict, List
+from dataclasses import dataclass
+from typing import Optional, Any, Union, Dict, List, Tuple
 
 import numpy as np
 import torch
@@ -17,101 +18,92 @@ import pytorch_lightning as L
 import torch_geometric as pyg
 
 
-class SmartGDLightningModule(L.LightningModule, LoggingMixin):
-    def __init__(self, *,
-                 dataset_name: str,
-                 generator_name: Optional[str] = None,
-                 generator_version: Optional[str] = None,
-                 discriminator_name: Optional[str] = None,
-                 discriminator_version: Optional[str] = None,
-                 criteria: Union[str, Dict[str, float]] = "stress_only",
-                 alternating_mode: str = "step",
-                 generator_frequency: Union[int, float] = 1,
-                 discriminator_frequency: Union[int, float] = 1,
-                 batch_size: int = 16,
-                 learning_rate: float = 1e-3,
-                 lr_gamma: float = 0.998):
-        super().__init__()
+class SmartGDLightningModule(BaseLightningModule):
+
+    @dataclass(kw_only=True)
+    class Config:
+        dataset_name: str
+        generator_spec: Union[Optional[str], Tuple[Optional[str], Optional[str]]] = None
+        discriminator_spec: Union[Optional[str], Tuple[Optional[str], Optional[str]]] = None
+        criteria: Union[str, Dict[str, float]] = "stress_only"
+        alternating_mode: str = "step"
+        generator_frequency: Union[int, float] = 1
+        discriminator_frequency: Union[int, float] = 1
+        batch_size: int = 16
+        learning_rate: float = 1e-3
+        lr_gamma: float = 0.998
+
+    def __init__(self, config: Optional[Config]):
+        super().__init__(config)
 
         # Models
-        self.syncer: ModelSyncer = ModelSyncer()
         self.generator: Optional[nn.Module] = None
         self.discriminator: Optional[nn.Module] = None
 
         # Data
-        self.dataset: Optional[pyg.data.Dataset] = None
-        self.datamodule: Optional[L.LightningModule] = None
         self.layout_manager: Optional[LayoutSyncer] = None
         self.real_layout_store: Optional[Dict[str, np.ndarray]] = None
 
         # Functions
+        self.critic: Optional[CompositeCritic] = None
         self.adversarial_criterion: BaseAdverserialCriterion = RGANCriterion()
         self.canonicalize: BaseTransformation = RescaleByStress()
-        self.append_column = BatchAppendColumn()
+        self.append_column: BatchAppendColumn = BatchAppendColumn()
 
+    def generate_hyperparameters(self, config: Config) -> Dict[str, Any]:
         # TODO: load from hparams
-        if isinstance(criteria, str):
-            self.critic = CompositeCritic.from_preset(criteria, batch_reduce=None)
-        else:
-            self.critic = CompositeCritic(criteria_weights=criteria, batch_reduce=None)
-
+        if isinstance(config.criteria, str):
+            config.criteria = CompositeCritic.get_preset(config.criteria)
+        if not isinstance(config.generator_spec, Tuple):
+            config.generator_spec = (config.generator_spec, None)
+        if not isinstance(config.discriminator_spec, Tuple):
+            config.discriminator_spec = (config.discriminator_spec, None)
         # TODO: load hparams directly from hparams.yml for existing experiments
-        self.save_hyperparameters(dict(
-            dataset_name=dataset_name,
+        return dict(
+            dataset_name=config.dataset_name,
             generator=dict(
                 meta=self.syncer.load_metadata(
-                    name=generator_name,
-                    version=generator_version
+                    name=config.generator_spec[0],
+                    version=config.generator_spec[1]
                 ),
                 args=self.syncer.load_arguments(
-                    name=generator_name,
-                    version=generator_version,
+                    name=config.generator_spec[0],
+                    version=config.generator_spec[1],
                     serialization=str
                 )
             ),
             discriminator=dict(
                 meta=self.syncer.load_metadata(
-                    name=discriminator_name,
-                    version=discriminator_version
+                    name=config.discriminator_spec[0],
+                    version=config.discriminator_spec[1]
                 ),
                 args=self.syncer.load_arguments(
-                    name=discriminator_name,
-                    version=discriminator_version,
+                    name=config.discriminator_spec[0],
+                    version=config.discriminator_spec[1],
                     serialization=str
                 )
             ),
-            criteria_weights=self.critic.weights,
-            alternating_mode=alternating_mode,
-            generator_frequency=generator_frequency,
-            discriminator_frequency=discriminator_frequency,
-            batch_size=batch_size,
-            learning_rate=learning_rate,
-            lr_gamma=lr_gamma
-        ))
+            criteria_weights=config.criteria,
+            alternating_mode=config.alternating_mode,
+            generator_frequency=config.generator_frequency,
+            discriminator_frequency=config.discriminator_frequency,
+            batch_size=config.batch_size,
+            learning_rate=config.learning_rate,
+            lr_gamma=config.lr_gamma
+        )
 
     def prepare_data(self):
-        # TODO: dynamically load dataset by name
-        self.dataset = RomeDataset()  # TODO: make sure it's not shuffled
-        # TODO: create datamodule from within dataset
-        self.datamodule = pyg.data.LightningDataset(
-            train_dataset=self.dataset[:10000],
-            val_dataset=self.dataset[11000:],
-            test_dataset=self.dataset[10000:11000],
-            batch_size=self.hparams.batch_size,
-        )
+        super().prepare_data()
         self.layout_manager = LayoutSyncer.get_default_syncer(self.dataset.name)
+        # TODO: load by hparams
         self.real_layout_store = self.layout_manager.load(name="neato")
 
-    def train_dataloader(self) -> pyg.loader.DataLoader:
-        return self.datamodule.train_dataloader()
-
-    def val_dataloader(self) -> pyg.loader.DataLoader:
-        return self.datamodule.val_dataloader()
-
-    def test_dataloader(self) -> pyg.loader.DataLoader:
-        return self.datamodule.test_dataloader()
-
     def setup(self, stage: str) -> None:
+        if not self.critic:
+            self.critic = CompositeCritic(
+                criteria_weights=self.hparams.criteria_weights,
+                batch_reduce=None
+            )
         if not self.generator:
             self.generator = self.syncer.load(
                 name=self.hparams.generator["meta"]["model_name"],
@@ -265,7 +257,7 @@ class SmartGDLightningModule(L.LightningModule, LoggingMixin):
                 self.real_layout_store[data.name] = data.fake_pos.detach().cpu().numpy()
         return step_output["loss"]
 
-    def validation_step(self, batch: pyg.data.Data, batch_idx: int):
+    def validation_step(self, batch: pyg.data.Batch, batch_idx: int):
         fake_layout = self.canonicalize(self(batch))
         score, raw_scores = self.critic(fake_layout), self.critic.get_raw_scores()
         self.log_val(score=score.mean().item(),

@@ -17,4 +17,6 @@ class DummyDiscriminator(nn.Module):
         self.stress = Stress(batch_reduce=None)
 
     def forward(self, layout: GraphLayout) -> torch.Tensor:
-        return - self.stress(layout) + self.dummy * 0
+        outputs = self.stress(layout)
+        outputs = torch.log(outputs)
+        return self.dummy * 0 - outputs
