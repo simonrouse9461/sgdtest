@@ -231,22 +231,27 @@ class SmartGDLightningModule(BaseLightningModule):
         real_pred = self.discriminator(real_layout)
         real_score = self.critic(real_layout)
 
-        positive, negative = real_score > fake_score, real_score < fake_score
+        positive, negative = real_score < fake_score, real_score > fake_score
         good_pred = torch.cat([real_pred[positive], fake_pred[negative]])
         bad_pred = torch.cat([fake_pred[positive], real_pred[negative]])
 
+        discriminator_loss = self.adversarial_criterion(encourage=good_pred, discourage=bad_pred)
+        generator_loss = self.adversarial_criterion(encourage=fake_pred, discourage=real_pred)
+
         # TODO: match case
         if optimizer_idx == 0:  # discriminator
-            loss = self.adversarial_criterion(encourage=good_pred, discourage=bad_pred)
+            loss = discriminator_loss
         elif optimizer_idx == 1:  # generator
-            loss = self.adversarial_criterion(encourage=fake_pred, discourage=real_pred)
+            loss = generator_loss
         else:
             assert False, f"Unknown optimizer with index {optimizer_idx}."
 
         batch = self.append_column(batch=batch, tensor=fake_layout.pos, name="fake_pos")
         batch = self.append_column(batch=batch, tensor=negative, name="flagged")
 
-        self.log_train(loss=loss.item(), score=fake_score.mean().item(),
+        self.log_train(discriminator_loss=discriminator_loss.item(),
+                       generator_loss=generator_loss.item(),
+                       score=fake_score.mean().item(),
                        **{k: v.mean().item() for k, v in fake_raw_scores.items()})
         return dict(loss=loss, batch=batch)
 
