@@ -39,6 +39,10 @@ class ModuleFactory:
     def pyg_batch_norm(self) -> Callable[..., pyg.nn.BatchNorm]:
         return pyg.nn.BatchNorm
 
+    @property
+    def pyg_graph_norm(self) -> Callable[..., pyg.nn.BatchNorm]:
+        return pyg.nn.GraphNorm
+
     # TODO: @ModuleFactory.register
 
     def __init__(self, name: Optional[str]):
