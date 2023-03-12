@@ -109,7 +109,7 @@ class DiscriminatorBlock(nn.Module):
             edge_attr=edge_attr,
             edge_index=edge_index
         )
-        outputs = node_feat
+        outputs = torch.ones_like(node_feat)
         for layer in self.layer_list:
             outputs = layer(
                 node_feat=outputs,
