@@ -43,6 +43,7 @@ class SmartGDLightningModule(BaseLightningModule):
         # Data
         self.layout_manager: Optional[LayoutSyncer] = None
         self.real_layout_store: Optional[Dict[str, np.ndarray]] = None
+        self.replacement_counter: Optional[Dict[str, int]] = None
 
         # Functions
         self.critic: Optional[CompositeCritic] = None
@@ -97,6 +98,7 @@ class SmartGDLightningModule(BaseLightningModule):
         self.layout_manager = LayoutSyncer.get_default_syncer(self.dataset.name)
         # TODO: load by hparams
         self.real_layout_store = self.layout_manager.load(name="neato")
+        self.replacement_counter = {k: 0 for k in self.real_layout_store}
 
     def setup(self, stage: str) -> None:
         if not self.critic:
@@ -125,9 +127,11 @@ class SmartGDLightningModule(BaseLightningModule):
             version=checkpoint["hyper_parameters"]["discriminator"]["meta"]["md5_digest"]
         )
         self.real_layout_store = checkpoint["real_layout_store"]
+        self.real_layout_store = checkpoint["replacement_counter"]
 
     def on_save_checkpoint(self, checkpoint: Dict[str, Any]):
         checkpoint["real_layout_store"] = self.real_layout_store
+        checkpoint["replacement_counter"] = self.replacement_counter
 
     def forward(self, batch: pyg.data.Data):
         layout = GraphLayout.from_data(data=batch)
@@ -235,7 +239,8 @@ class SmartGDLightningModule(BaseLightningModule):
         good_pred = torch.cat([real_pred[positive], fake_pred[negative]])
         bad_pred = torch.cat([fake_pred[positive], real_pred[negative]])
 
-        discriminator_loss = self.adversarial_criterion(encourage=good_pred, discourage=bad_pred)
+        # discriminator_loss = self.adversarial_criterion(encourage=good_pred, discourage=bad_pred)
+        discriminator_loss = (fake_pred + fake_score.log()).square().mean()
         generator_loss = self.adversarial_criterion(encourage=fake_pred, discourage=real_pred)
 
         # TODO: match case
@@ -249,21 +254,41 @@ class SmartGDLightningModule(BaseLightningModule):
         batch = self.append_column(batch=batch, tensor=fake_layout.pos, name="fake_pos")
         batch = self.append_column(batch=batch, tensor=negative, name="flagged")
 
-        self.log_train(discriminator_loss=discriminator_loss.item(),
-                       generator_loss=generator_loss.item(),
-                       score=fake_score.mean().item(),
-                       **{k: v.mean().item() for k, v in fake_raw_scores.items()})
+        self.log_train_step(
+            discriminator_loss=discriminator_loss.item(),
+            generator_loss=generator_loss.item(),
+            score=fake_score.mean().item(),
+            **{k: v.mean().item() for k, v in fake_raw_scores.items()}
+        )
         return dict(loss=loss, batch=batch)
 
     def training_step_end(self, step_output: dict) -> torch.Tensor:
         batch = step_output["batch"]
+        replacements = 0
+        initial_replacements = 0
         for data in batch.to_data_list():
             if data.flagged.item():
                 self.real_layout_store[data.name] = data.fake_pos.detach().cpu().numpy()
+                self.replacement_counter[data.name] += 1
+                if self.replacement_counter[data.name] == 1:
+                    initial_replacements += 1
+                replacements += 1
+        self.log_train_step_sum_on_epoch_end(
+            replacements=replacements,
+            initial_replacements=initial_replacements
+        )
         return step_output["loss"]
+
+    def training_epoch_end(self, outputs: List[torch.Tensor]) -> None:
+        self.log_epoch_end(
+            total_replacements=sum(self.replacement_counter.values()),
+            total_unique_replacements=sum(map(bool, self.replacement_counter.values()))
+        )
 
     def validation_step(self, batch: pyg.data.Batch, batch_idx: int):
         fake_layout = self.canonicalize(self(batch))
         score, raw_scores = self.critic(fake_layout), self.critic.get_raw_scores()
-        self.log_val(score=score.mean().item(),
-                     **{k: v.mean().item() for k, v in raw_scores.items()})
+        self.log_val_step(
+            score=score.mean().item(),
+            **{k: v.mean().item() for k, v in raw_scores.items()}
+        )

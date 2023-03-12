@@ -27,19 +27,32 @@ class LoggingMixin(ABC):
                       logger=True,
                       **kwargs)
 
-    def log_train(self, **dictionary):
+    def log_epoch_end(self, **dictionary):
+        self.log_with_prefix(prefix="",
+                             dictionary=dictionary,
+                             on_step=False,
+                             on_epoch=True)
+
+    def log_train_step(self, **dictionary):
         self.log_with_prefix(prefix=TRAIN_PREFIX,
                              dictionary=dictionary,
                              on_step=True,
                              on_epoch=True)
 
-    def log_val(self, **dictionary):
+    def log_train_step_sum_on_epoch_end(self, **dictionary):
+        self.log_with_prefix(prefix=TRAIN_PREFIX,
+                             dictionary=dictionary,
+                             on_step=True,
+                             on_epoch=True,
+                             reduce_fx="sum")
+
+    def log_val_step(self, **dictionary):
         self.log_with_prefix(prefix=VAL_PREFIX,
                              dictionary=dictionary,
                              on_step=False,
                              on_epoch=True)
 
-    def log_test(self, **dictionary):
+    def log_test_step(self, **dictionary):
         self.log_with_prefix(prefix=TEST_PREFIX,
                              dictionary=dictionary,
                              on_step=False,
