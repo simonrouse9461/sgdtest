@@ -2,6 +2,7 @@ from smartgd.common.datasets import RomeDataset
 from smartgd.common.syncing import LayoutSyncer, ModelSyncer
 from .mixins import LoggingMixin
 
+import os
 from typing import Optional, Dict, Any
 from abc import ABC, abstractmethod
 
@@ -40,6 +41,7 @@ class BaseLightningModule(L.LightningModule, LoggingMixin, ABC):
             val_dataset=self.dataset[11000:],
             test_dataset=self.dataset[10000:11000],
             batch_size=self.hparams.batch_size,
+            num_workers=os.cpu_count()
         )
 
     def train_dataloader(self) -> pyg.loader.DataLoader:

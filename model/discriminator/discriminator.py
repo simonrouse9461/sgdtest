@@ -27,11 +27,11 @@ class Discriminator(nn.Module):
         edge_attr_dim: int
 
     params: Params = Params(
-        num_layers=3,
+        num_layers=9,
         hidden_width=16,
         edge_net_shared_depth=8,
         edge_net_embedded_depth=8,
-        edge_net_width=16,
+        edge_net_width=64,
         edge_attr_dim=2
     )
     edge_net_config: DiscriminatorBlock.EdgeNetConfig = DiscriminatorBlock.EdgeNetConfig()
