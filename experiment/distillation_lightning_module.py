@@ -4,7 +4,7 @@ from smartgd.common.syncing import LayoutSyncer, ModelSyncer
 from .base_lightning_module import BaseLightningModule
 
 from dataclasses import dataclass
-from typing import Optional, Any, Union, Dict, List, Tuple
+from typing import Optional, Any, Union
 
 import numpy as np
 import torch
@@ -18,8 +18,8 @@ class DistillationLightningModule(BaseLightningModule):
     @dataclass
     class Config:
         dataset_name: str
-        teacher_spec: Union[Optional[str], Tuple[Optional[str], Optional[str]]] = None
-        student_spec: Union[Optional[str], Tuple[Optional[str], Optional[str]]] = None
+        teacher_spec: Union[Optional[str], tuple[Optional[str], Optional[str]]] = None
+        student_spec: Union[Optional[str], tuple[Optional[str], Optional[str]]] = None
         batch_size: int = 16
         learning_rate: float = 1e-3
         lr_gamma: float = 0.998
@@ -35,11 +35,11 @@ class DistillationLightningModule(BaseLightningModule):
         self.canonicalize: BaseTransformation = RescaleByStress()
         self.append_column = BatchAppendColumn()
 
-    def generate_hyperparameters(self, config: Config) -> Dict[str, Any]:
+    def generate_hyperparameters(self, config: Config) -> dict[str, Any]:
         # TODO: load hparams directly from hparams.yml for existing experiments
-        if not isinstance(config.teacher_spec, Tuple):
+        if not isinstance(config.teacher_spec, tuple):
             config.teacher_spec = (config.teacher_spec, None)
-        if not isinstance(config.student_spec, Tuple):
+        if not isinstance(config.student_spec, tuple):
             config.student_spec = (config.student_spec, None)
         return dict(
             dataset_name=config.dataset_name,
@@ -82,7 +82,7 @@ class DistillationLightningModule(BaseLightningModule):
                 version=self.hparams.student["meta"]["md5_digest"]
             )
 
-    def on_load_checkpoint(self, checkpoint: Dict[str, Any]):
+    def on_load_checkpoint(self, checkpoint: dict[str, Any]):
         self.teacher = self.syncer.load(
             name=checkpoint["hyper_parameters"]["teacher"]["meta"]["model_name"],
             version=checkpoint["hyper_parameters"]["teacher"]["meta"]["md5_digest"]
@@ -98,7 +98,7 @@ class DistillationLightningModule(BaseLightningModule):
         layout = self.student(layout)
         return layout
 
-    def configure_callbacks(self) -> Union[L.Callback, List[L.Callback]]:
+    def configure_callbacks(self) -> Union[L.Callback, list[L.Callback]]:
         return [
             # PeriodicLRFinder(
             #     interval=1,

@@ -17,6 +17,7 @@ from torch import nn
 @dataclass(kw_only=True, eq=False)
 class GeneratorBlock(nn.Module):
 
+    # TODO: separate into Params and Config
     @dataclass(kw_only=True, frozen=True)
     class Config:
         in_dim: int

@@ -5,7 +5,7 @@ from smartgd.common.data import GraphLayout
 from ..common import EdgeFeatureExpansion, NNConvLayer
 from .discriminator_block import DiscriminatorBlock
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import torch
 from torch import nn
@@ -26,6 +26,10 @@ class Discriminator(nn.Module):
         edge_net_width: int
         edge_attr_dim: int
 
+    @dataclass(kw_only=True, frozen=True)
+    class Config:
+        pooling: str | list[str] = field(default_factory=lambda: ["sum", "mean", "max", "min"])
+
     params: Params = Params(
         num_layers=9,
         hidden_width=16,
@@ -34,6 +38,7 @@ class Discriminator(nn.Module):
         edge_net_width=64,
         edge_attr_dim=2
     )
+    config: Config = Config()
     edge_net_config: DiscriminatorBlock.EdgeNetConfig = DiscriminatorBlock.EdgeNetConfig()
     gnn_config: NNConvLayer.NNConvConfig = NNConvLayer.NNConvConfig(
         aggr="add",
@@ -42,6 +47,7 @@ class Discriminator(nn.Module):
     edge_feat_expansion: EdgeFeatureExpansion.Expansions = EdgeFeatureExpansion.Expansions(
         src_feat=True,
         dst_feat=True,
+        diff_vec=False,
         unit_vec=False,
         vec_norm=False,
         vec_norm_inv=False,
@@ -76,16 +82,14 @@ class Discriminator(nn.Module):
             eps=self.eps
         )
 
-        # self.readout = pyg.nn.aggr.MultiAggregation(
-        #     aggrs=["sum", "mean", "max"],
-        #     mode="proj",
-        #     mode_kwargs=dict(
-        #         in_channels=self.params.hidden_width,
-        #         out_channels=1
-        #     )
-        # )
-
-        self.lin = nn.Linear(self.params.hidden_width, 1)
+        self.readout = pyg.nn.aggr.MultiAggregation(
+            aggrs=self.config.pooling,
+            mode="proj",
+            mode_kwargs=dict(
+                in_channels=self.params.hidden_width,
+                out_channels=1
+            )
+        )
 
     def forward(self, layout: GraphLayout) -> torch.Tensor:
         node_feat = self.block(
@@ -94,7 +98,5 @@ class Discriminator(nn.Module):
             edge_attr=layout.edge_attr.all,
             batch_index=layout.batch
         )
-        # outputs = self.readout(node_feat, layout.batch)
-        outputs = pyg.nn.global_add_pool(node_feat, layout.batch)
-        outputs = self.lin(outputs)
+        outputs = self.readout(node_feat, layout.batch)
         return outputs.flatten()

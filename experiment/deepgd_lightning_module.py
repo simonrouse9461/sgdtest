@@ -8,7 +8,7 @@ from smartgd.common.nn.criteria import (
 )
 from .mixins import LoggingMixin
 
-from typing import Optional, Any, Union, Dict, List
+from typing import Optional, Any, Union
 
 import numpy as np
 import torch
@@ -22,7 +22,7 @@ class DeepGDLightningModule(L.LightningModule, LoggingMixin):
                  dataset_name: str,
                  generator_name: Optional[str] = None,
                  generator_version: Optional[str] = None,
-                 criteria: Union[str, Dict[str, float]] = "stress_only",
+                 criteria: Union[str, dict[str, float]] = "stress_only",
                  batch_size: int = 16,
                  learning_rate: float = 1e-3,
                  lr_gamma: float = 0.998):
@@ -96,13 +96,13 @@ class DeepGDLightningModule(L.LightningModule, LoggingMixin):
                 version=self.hparams.generator["meta"]["md5_digest"]
             )
 
-    def on_load_checkpoint(self, checkpoint: Dict[str, Any]):
+    def on_load_checkpoint(self, checkpoint: dict[str, Any]):
         self.generator = self.syncer.load(
             name=checkpoint["hyper_parameters"]["generator"]["meta"]["model_name"],
             version=checkpoint["hyper_parameters"]["generator"]["meta"]["md5_digest"]
         )
 
-    def on_save_checkpoint(self, checkpoint: Dict[str, Any]):
+    def on_save_checkpoint(self, checkpoint: dict[str, Any]):
         pass
 
     def forward(self, batch: pyg.data.Data):
@@ -111,7 +111,7 @@ class DeepGDLightningModule(L.LightningModule, LoggingMixin):
         layout = self.generator(layout)
         return layout
 
-    def configure_callbacks(self) -> Union[L.Callback, List[L.Callback]]:
+    def configure_callbacks(self) -> Union[L.Callback, list[L.Callback]]:
         return [
             # PeriodicLRFinder(
             #     interval=1,

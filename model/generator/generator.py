@@ -62,8 +62,17 @@ class Generator(nn.Module):
     edge_net_config: EdgeNetConfig = EdgeNetConfig()
     gnn_config: GNNConfig = GNNConfig()
     edge_feat_expansion: EdgeFeatureExpansion.Expansions = EdgeFeatureExpansion.Expansions(
+        src_feat=False,
+        dst_feat=False,
+        diff_vec=False,
         unit_vec=True,
-        vec_norm=True
+        vec_norm=True,
+        vec_norm_inv=False,
+        vec_norm_square=False,
+        vec_norm_inv_square=False,
+        edge_attr_inv=False,
+        edge_attr_square=False,
+        edge_attr_inv_square=False
     )
     eps: float = EPS
 

@@ -2,7 +2,7 @@ from smartgd.constants import (
     AIMSTACK_SERVER_URL, TRAIN_PREFIX, VAL_PREFIX, TEST_PREFIX
 )
 
-from typing import Optional, Any, Dict
+from typing import Optional, Any
 
 from pytorch_lightning.utilities import rank_zero_only
 from aim.pytorch_lightning import AimLogger
@@ -28,10 +28,10 @@ class CustomAimLogger(AimLogger):
         self._epoch_metrix_suffix = epoch_metrix_suffix
 
     @rank_zero_only
-    def log_metrics(self, metrics: Dict[str, float], step: Optional[int] = None):
+    def log_metrics(self, metrics: dict[str, float], step: Optional[int] = None):
         assert rank_zero_only.rank == 0, 'experiment tried to log from global_rank != 0'
 
-        metric_items: Dict[str: Any] = {k: v for k, v in metrics.items()}
+        metric_items: dict[str: Any] = {k: v for k, v in metrics.items()}
 
         epoch: Optional[int] = None
         if 'epoch' in metric_items:
@@ -41,30 +41,20 @@ class CustomAimLogger(AimLogger):
             name = k
             context = {}
             if self._train_metric_prefix and name.startswith(self._train_metric_prefix):
-                name = self.removeprefix(name, self._train_metric_prefix)
+                name = name.removeprefix(self._train_metric_prefix)
                 context['subset'] = 'train'
             elif self._test_metric_prefix and name.startswith(self._test_metric_prefix):
-                name = self.removeprefix(name, self._test_metric_prefix)
+                name = name.removeprefix(self._test_metric_prefix)
                 context['subset'] = 'test'
             elif self._val_metric_prefix and name.startswith(self._val_metric_prefix):
-                name = self.removeprefix(name, self._val_metric_prefix)
+                name = name.removeprefix(self._val_metric_prefix)
                 context['subset'] = 'val'
 
             if self._step_metrix_suffix and name.endswith(self._step_metrix_suffix):
-                name = self.removesuffix(name, self._step_metrix_suffix)
+                name = name.removesuffix(self._step_metrix_suffix)
                 context['aggr'] = 'step'
             elif self._epoch_metrix_suffix and name.endswith(self._epoch_metrix_suffix):
-                name = self.removesuffix(name, self._epoch_metrix_suffix)
+                name = name.removesuffix(self._epoch_metrix_suffix)
                 context['aggr'] = 'epoch'
 
             self.experiment.track(v, name=name, step=step, epoch=epoch, context=context)
-
-    def removeprefix(self, text: str, prefix: str):
-        if text.startswith(prefix):
-            return text[len(prefix):]
-        return text
-
-    def removesuffix(self, text: str, suffix: str):
-        if text.endswith(suffix):
-            return text[:-len(suffix)]
-        return text

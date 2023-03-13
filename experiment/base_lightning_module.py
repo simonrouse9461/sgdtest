@@ -3,7 +3,7 @@ from smartgd.common.syncing import LayoutSyncer, ModelSyncer
 from .mixins import LoggingMixin
 
 import os
-from typing import Optional, Dict, Any
+from typing import Optional, Any
 from abc import ABC, abstractmethod
 
 import pytorch_lightning as L
@@ -24,12 +24,12 @@ class BaseLightningModule(L.LightningModule, LoggingMixin, ABC):
         self.dataset: Optional[pyg.data.Dataset] = None
         self.datamodule: Optional[L.LightningModule] = None
 
-    def load_hyperparameters(self, hparam_dict: Dict[str, Any]):
+    def load_hyperparameters(self, hparam_dict: dict[str, Any]):
         self.hparams.clear()
         self.hparams.update(hparam_dict)
 
     @abstractmethod
-    def generate_hyperparameters(self, config: Any) -> Dict[str, Any]:
+    def generate_hyperparameters(self, config: Any) -> dict[str, Any]:
         return NotImplemented
 
     def prepare_data(self):

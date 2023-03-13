@@ -6,7 +6,7 @@ from smartgd.common.data import (
     Center,
     NormalizeRotation
 )
-from smartgd.common.datasets import RomeDataset, BatchAppendColumn
+from smartgd.common.datasets import BatchAppendColumn
 from smartgd.common.syncing import LayoutSyncer, ModelSyncer
 from smartgd.common.nn.criteria import (
     CompositeCritic,
@@ -16,7 +16,7 @@ from smartgd.common.nn.criteria import (
 from .base_lightning_module import BaseLightningModule
 
 from dataclasses import dataclass
-from typing import Optional, Any, Union, Dict, List, Tuple
+from typing import Optional, Any, Union
 
 import numpy as np
 import torch
@@ -30,9 +30,9 @@ class SmartGDLightningModule(BaseLightningModule):
     @dataclass
     class Config:
         dataset_name: str
-        generator_spec: Union[Optional[str], Tuple[Optional[str], Optional[str]]] = None
-        discriminator_spec: Union[Optional[str], Tuple[Optional[str], Optional[str]]] = None
-        criteria: Union[str, Dict[str, float]] = "stress_only"
+        generator_spec: Union[Optional[str], tuple[Optional[str], Optional[str]]] = None
+        discriminator_spec: Union[Optional[str], tuple[Optional[str], Optional[str]]] = None
+        criteria: Union[str, dict[str, float]] = "stress_only"
         alternating_mode: str = "step"
         generator_frequency: Union[int, float] = 1
         discriminator_frequency: Union[int, float] = 1
@@ -49,8 +49,8 @@ class SmartGDLightningModule(BaseLightningModule):
 
         # Data
         self.layout_manager: Optional[LayoutSyncer] = None
-        self.real_layout_store: Optional[Dict[str, np.ndarray]] = None
-        self.replacement_counter: Optional[Dict[str, int]] = None
+        self.real_layout_store: Optional[dict[str, np.ndarray]] = None
+        self.replacement_counter: Optional[dict[str, int]] = None
 
         # Functions
         self.critic: Optional[CompositeCritic] = None
@@ -62,13 +62,13 @@ class SmartGDLightningModule(BaseLightningModule):
         )
         self.append_column: BatchAppendColumn = BatchAppendColumn()
 
-    def generate_hyperparameters(self, config: Config) -> Dict[str, Any]:
+    def generate_hyperparameters(self, config: Config) -> dict[str, Any]:
         # TODO: load from hparams
         if isinstance(config.criteria, str):
             config.criteria = CompositeCritic.get_preset(config.criteria)
-        if not isinstance(config.generator_spec, Tuple):
+        if not isinstance(config.generator_spec, tuple):
             config.generator_spec = (config.generator_spec, None)
-        if not isinstance(config.discriminator_spec, Tuple):
+        if not isinstance(config.discriminator_spec, tuple):
             config.discriminator_spec = (config.discriminator_spec, None)
         # TODO: load hparams directly from hparams.yml for existing experiments
         return dict(
@@ -128,7 +128,7 @@ class SmartGDLightningModule(BaseLightningModule):
                 version=self.hparams.discriminator["meta"]["md5_digest"]
             )
 
-    def on_load_checkpoint(self, checkpoint: Dict[str, Any]):
+    def on_load_checkpoint(self, checkpoint: dict[str, Any]):
         self.generator = self.syncer.load(
             name=checkpoint["hyper_parameters"]["generator"]["meta"]["model_name"],
             version=checkpoint["hyper_parameters"]["generator"]["meta"]["md5_digest"]
@@ -140,7 +140,7 @@ class SmartGDLightningModule(BaseLightningModule):
         self.real_layout_store = checkpoint["real_layout_store"]
         self.real_layout_store = checkpoint["replacement_counter"]
 
-    def on_save_checkpoint(self, checkpoint: Dict[str, Any]):
+    def on_save_checkpoint(self, checkpoint: dict[str, Any]):
         checkpoint["real_layout_store"] = self.real_layout_store
         checkpoint["replacement_counter"] = self.replacement_counter
 
@@ -150,7 +150,7 @@ class SmartGDLightningModule(BaseLightningModule):
         layout = self.generator(layout)
         return layout
 
-    def configure_callbacks(self) -> Union[L.Callback, List[L.Callback]]:
+    def configure_callbacks(self) -> Union[L.Callback, list[L.Callback]]:
         return [
             # PeriodicLRFinder(
             #     interval=1,
@@ -251,8 +251,6 @@ class SmartGDLightningModule(BaseLightningModule):
         bad_pred = torch.cat([fake_pred[positive], real_pred[negative]])
 
         discriminator_loss = self.adversarial_criterion(encourage=good_pred, discourage=bad_pred)
-        # discriminator_loss = self.adversarial_criterion(encourage=real_pred, discourage=fake_pred)
-        # discriminator_loss = ((fake_pred + fake_score.log()).square() + (real_pred + real_score.log()).square()).mean()
         generator_loss = self.adversarial_criterion(encourage=fake_pred, discourage=real_pred)
 
         # TODO: match case
@@ -291,7 +289,7 @@ class SmartGDLightningModule(BaseLightningModule):
         )
         return step_output["loss"]
 
-    def training_epoch_end(self, outputs: List[torch.Tensor]) -> None:
+    def training_epoch_end(self, outputs: list[torch.Tensor]) -> None:
         self.log_epoch_end(
             total_replacements=sum(self.replacement_counter.values()),
             total_unique_replacements=sum(map(bool, self.replacement_counter.values()))
