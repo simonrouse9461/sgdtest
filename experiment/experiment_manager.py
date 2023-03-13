@@ -22,8 +22,8 @@ class ExperimentManager:
     LAST_RUN_HASH_ALIAS = "last"
 
     def __init__(self, *,
-                 experiment_name: Optional[str] = None,
-                 experiment_version: Optional[str] = None,
+                 experiment_name: Optional[str] = None,  # TODO: rename to experiment_group
+                 experiment_version: Optional[str] = None,  # TODO: rename to experiment_name
                  experiment_description: Optional[str] = None,
                  run_hash: Optional[str] = None,
                  run_name: Optional[str] = None,

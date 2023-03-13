@@ -28,7 +28,7 @@ class Discriminator(nn.Module):
 
     @dataclass(kw_only=True, frozen=True)
     class Config:
-        pooling: str | list[str] = field(default_factory=lambda: ["sum", "mean", "max", "min"])
+        pooling: str | list[str] = field(default_factory=lambda: ["sum", "mean", "max"])
 
     params: Params = Params(
         num_layers=9,
@@ -82,8 +82,8 @@ class Discriminator(nn.Module):
             eps=self.eps
         )
 
-        self.readout = pyg.nn.aggr.MultiAggregation(
-            aggrs=self.config.pooling,
+        self.readout: pyg.nn.Aggregation = pyg.nn.MultiAggregation(
+            aggrs=self.config.pooling,  # TODO: deal with single str or list with a single element
             mode="proj",
             mode_kwargs=dict(
                 in_channels=self.params.hidden_width,
