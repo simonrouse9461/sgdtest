@@ -181,8 +181,8 @@ class SmartGDLightningModule(BaseLightningModule):
     def on_load_checkpoint(self, checkpoint: dict[str, Any]):
         self.load_generator(checkpoint["hyper_parameters"]["generator"])
         self.load_discriminator(checkpoint["hyper_parameters"]["discriminator"])
-        self.real_layout_store = checkpoint["real_layout_store"]
-        self.real_layout_store = checkpoint["replacement_counter"]
+        self.real_layout_store = dict(checkpoint["real_layout_store"])  # TODO: remove dict later
+        self.real_layout_store = dict(checkpoint["replacement_counter"])  # TODO: remove dict later
 
     def on_save_checkpoint(self, checkpoint: dict[str, Any]):
         checkpoint["real_layout_store"] = self.real_layout_store
