@@ -31,7 +31,7 @@ class LayoutSyncer:
     @normalize_args
     def save(self, layout_dict: dict, *, name: str, params: Optional[dict] = None):
         with self.fs.open(self._get_file_path(name, params), "wb") as fout:
-            pickle.dump(layout_dict, fout)
+            pickle.dump(dict(layout_dict), fout)
         self.evict_cache(name=name, params=params)
 
     @normalize_args
@@ -42,7 +42,7 @@ class LayoutSyncer:
     @cached({})
     def load(self, *, name: str, params: Optional[dict] = None) -> dict[str, np.ndarray]:
         with self.fs.open(self._get_file_path(name, params), "rb") as fin:
-            return pickle.load(fin)
+            return dict(pickle.load(fin))
 
     @normalize_args
     def evict_cache(self, *, name: str, params: Optional[dict] = None) -> Optional[dict[str, np.ndarray]]:
