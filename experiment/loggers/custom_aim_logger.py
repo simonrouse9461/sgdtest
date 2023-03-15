@@ -5,7 +5,9 @@ from smartgd.constants import (
 from typing import Optional, Any
 
 from pytorch_lightning.utilities import rank_zero_only
+from pytorch_lightning.loggers.logger import rank_zero_experiment
 from aim.pytorch_lightning import AimLogger
+from aim.sdk.run import Run
 
 
 class CustomAimLogger(AimLogger):
@@ -14,6 +16,7 @@ class CustomAimLogger(AimLogger):
                  run_hash: Optional[str] = None,
                  step_metrix_suffix: Optional[str] = "_step",
                  epoch_metrix_suffix: Optional[str] = "_epoch",
+                 force_resume: bool = False,
                  **kwargs):
         super().__init__(
             repo=f"aim://{AIMSTACK_SERVER_URL}",
@@ -26,6 +29,31 @@ class CustomAimLogger(AimLogger):
         self._run_hash = run_hash
         self._step_metrix_suffix = step_metrix_suffix
         self._epoch_metrix_suffix = epoch_metrix_suffix
+        self._force_resume = force_resume
+
+    @property
+    @rank_zero_experiment
+    def experiment(self) -> Run:
+        if self._run is None:
+            if self._run_hash:
+                self._run = Run(
+                    self._run_hash,
+                    repo=self._repo_path,
+                    system_tracking_interval=self._system_tracking_interval,
+                    capture_terminal_logs=self._capture_terminal_logs,
+                    force_resume=self._force_resume
+                )
+            else:
+                self._run = Run(
+                    repo=self._repo_path,
+                    experiment=self._experiment_name,
+                    system_tracking_interval=self._system_tracking_interval,
+                    log_system_params=self._log_system_params,
+                    capture_terminal_logs=self._capture_terminal_logs,
+                    force_resume=self._force_resume
+                )
+                self._run_hash = self._run.hash
+        return self._run
 
     @rank_zero_only
     def log_metrics(self, metrics: dict[str, float], step: Optional[int] = None):

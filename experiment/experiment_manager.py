@@ -28,7 +28,8 @@ class ExperimentManager:
                  experiment_description: Optional[str] = None,
                  run_hash: Optional[str] = None,
                  run_name: Optional[str] = None,
-                 run_description: Optional[str] = None):
+                 run_description: Optional[str] = None,
+                 force_resume: bool = False):
         # TODO: lookup experiment name and version by `run_hash`
         self._set_up_tensorboard(
             experiment_name=experiment_name,
@@ -38,7 +39,8 @@ class ExperimentManager:
             experiment_description=experiment_description,
             run_hash=run_hash,
             run_name=run_name,
-            run_description=run_description
+            run_description=run_description,
+            force_resume=force_resume
         )
         self.print_info()
         self._update_metadata()
@@ -50,10 +52,10 @@ class ExperimentManager:
         self.fs = cloud_io.get_filesystem(self.log_dir)
         self.experiment_meta_callback = SaveMetadata(dirpath=self.log_dir)
 
-    def _set_up_aim(self, *,
-                    experiment_description, run_hash, run_name, run_description):
+    def _set_up_aim(self, *, experiment_description, run_hash, run_name, run_description, force_resume):
         self.aim: AimLogger = CustomAimLogger(experiment=f"{self.experiment_name}/{self.experiment_version}",
-                                              run_hash=self._resolve_run_hash(run_hash))
+                                              run_hash=self._resolve_run_hash(run_hash),
+                                              force_resume=force_resume)
         self.experiment_description = experiment_description or (
             self.experiment_metadata["experiment_description"]
             if self.experiment_metadata is not None
