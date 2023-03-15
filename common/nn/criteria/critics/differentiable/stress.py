@@ -1,6 +1,6 @@
 from smartgd.common.data import GraphLayout
-from .base_critic import BaseCritic
-from .composite_critic import CompositeCritic
+from ..base_critic import BaseCritic
+from ..composite_critic import CompositeCritic
 
 from typing import Optional
 
@@ -17,5 +17,6 @@ class Stress(BaseCritic):
 
     def compute(self, layout: GraphLayout) -> torch.Tensor:
         dist = torch.norm(layout.full_dst_pos - layout.full_src_pos, 2, 1)
-        edge_stress = dist.sub(layout.edge_attr.shortest_path).abs().div(layout.edge_attr.shortest_path).square()
+        d_attr = layout.edge_full.attr.shortest_path
+        edge_stress = dist.sub(d_attr).abs().div(d_attr).square()
         return torch_scatter.scatter(edge_stress,  layout.full_batch_index)

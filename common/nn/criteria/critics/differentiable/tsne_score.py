@@ -1,6 +1,6 @@
 from smartgd.common.data import GraphLayout
-from .base_critic import BaseCritic
-from .composite_critic import CompositeCritic
+from ..base_critic import BaseCritic
+from ..composite_critic import CompositeCritic
 
 from typing import Optional
 
@@ -19,10 +19,10 @@ class TSNEScore(BaseCritic):
         self.sigma: float = sigma
 
     def compute(self, layout: GraphLayout) -> torch.Tensor:
-        p = layout.edge_attr.shortest_path.div(-2 * self.sigma ** 2).exp()
-        sum_src = torch_scatter.scatter(p, layout.edge_idx.full_src)[layout.edge_idx.full_src]
-        sum_dst = torch_scatter.scatter(p, layout.edge_idx.full_dst)[layout.edge_idx.full_dst]
-        p = (p / sum_src + p / sum_dst) / (2 * layout.n[layout.full_batch_index])
+        p = layout.edge_full.attr.shortest_path.div(-2 * self.sigma ** 2).exp()
+        sum_src = torch_scatter.scatter(p, layout.edge_full.src)[layout.edge_full.src]
+        sum_dst = torch_scatter.scatter(p, layout.edge_full.dst)[layout.edge_full.dst]
+        p = (p / sum_src + p / sum_dst) / (2 * layout.graph_attr.n[layout.full_batch_index])
         dist = layout.full_dst_pos.sub(layout.full_src_pos).norm(dim=1)
         index = layout.full_batch_index
         q = 1 / (1 + dist.square())

@@ -6,7 +6,7 @@ from smartgd.common.nn.criteria import (
     RGANCriterion,
     BaseAdverserialCriterion,
 )
-from .mixins import LoggingMixin
+from smartgd.experiment.mixins import LoggingMixin
 
 from typing import Optional, Any, Union
 

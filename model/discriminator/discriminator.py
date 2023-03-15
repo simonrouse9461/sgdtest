@@ -1,7 +1,6 @@
 from smartgd.constants import EPS
 from smartgd.common.functools import default_kwargs
 from smartgd.common.jittools import jittable
-from smartgd.common.data import GraphLayout
 from ..common import EdgeFeatureExpansion, NNConvLayer
 from .discriminator_block import DiscriminatorBlock
 
@@ -91,12 +90,16 @@ class Discriminator(nn.Module):
             )
         )
 
-    def forward(self, layout: GraphLayout) -> torch.Tensor:
+    def forward(self,
+                pos: torch.FloatTensor,
+                edge_index: torch.LongTensor,
+                edge_attr: torch.FloatTensor,
+                batch_index: torch.LongTensor) -> torch.Tensor:
         node_feat = self.block(
-            node_feat=layout.pos,
-            edge_index=layout.edge_idx.mp,
-            edge_attr=layout.edge_attr.all,
-            batch_index=layout.batch
+            node_feat=pos,
+            edge_index=edge_index,
+            edge_attr=edge_attr,
+            batch_index=batch_index
         )
-        outputs = self.readout(node_feat, layout.batch)
+        outputs = self.readout(node_feat, batch_index)
         return outputs.flatten()

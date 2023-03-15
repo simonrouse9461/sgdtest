@@ -1,7 +1,6 @@
 from smartgd.constants import EPS
 from smartgd.common.functools import default_kwargs
 from smartgd.common.jittools import jittable
-from smartgd.common.data import GraphLayout
 from ..common import EdgeFeatureExpansion
 from .generator_block import GeneratorBlock
 from .generator_layer import GeneratorLayer
@@ -9,6 +8,7 @@ from .generator_layer import GeneratorLayer
 from dataclasses import dataclass
 from typing import Optional
 
+import torch
 from torch import nn
 
 
@@ -161,14 +161,18 @@ class Generator(nn.Module):
             )
         )
 
-    def forward(self, layout: GraphLayout) -> GraphLayout:
-        inputs = outputs = layout.pos
+    def forward(self,
+                init_pos: torch.FloatTensor,
+                edge_index: torch.LongTensor,
+                edge_attr: torch.FloatTensor,
+                batch_index: torch.LongTensor) -> torch.Tensor:
+        inputs = outputs = init_pos
         for block in self.block_list:
             outputs = block(node_feat=outputs,
                             node_attr=inputs,
-                            edge_index=layout.edge_idx.mp,
-                            edge_attr=layout.edge_attr.all,
-                            batch_index=layout.batch)
+                            edge_index=edge_index,
+                            edge_attr=edge_attr,
+                            batch_index=batch_index)
 
         # TODO: Use input as initial layout
         #   outputs += normalized_inputs
@@ -176,4 +180,4 @@ class Generator(nn.Module):
 
         # TODO: ScaleNet - learn best scaling
 
-        return layout(outputs)
+        return outputs

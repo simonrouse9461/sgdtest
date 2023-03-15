@@ -11,7 +11,7 @@ class RescaleByStress(BaseTransformation):
 
     def forward(self, layout: GraphLayout) -> GraphLayout:
         dist = (layout.full_dst_pos - layout.full_src_pos).norm(dim=1)
-        u_over_d = dist / layout.edge_attr.shortest_path
+        u_over_d = dist / layout.edge_full.attr.shortest_path
         scatterd_u_over_d_2 = torch_scatter.scatter(u_over_d ** 2, layout.full_batch_index)
         scatterd_u_over_d = torch_scatter.scatter(u_over_d, layout.full_batch_index)
         scale = scatterd_u_over_d_2 / scatterd_u_over_d

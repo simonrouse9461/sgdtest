@@ -7,15 +7,16 @@ from smartgd.common.data import (
     NormalizeRotation
 )
 from smartgd.common.datasets import BatchAppendColumn
-from smartgd.common.syncing import LayoutSyncer, ModelSyncer
 from smartgd.common.nn.criteria import (
     CompositeCritic,
     RGANCriterion,
     BaseAdverserialCriterion,
 )
+from ..data_adaptors import DiscriminatorDataAdaptor, GeneratorDataAdaptor
 from .base_lightning_module import BaseLightningModule
 
-from dataclasses import dataclass
+from collections import defaultdict
+from dataclasses import dataclass, field
 from typing import Optional, Any, Union
 
 import numpy as np
@@ -23,16 +24,20 @@ import torch
 from torch import nn
 import pytorch_lightning as L
 import torch_geometric as pyg
+from tqdm.auto import tqdm
 
 
 class SmartGDLightningModule(BaseLightningModule):
 
     @dataclass
     class Config:
-        dataset_name: str
+        dataset_name: str = "Rome"
         generator_spec: Union[Optional[str], tuple[Optional[str], Optional[str]]] = None
         discriminator_spec: Union[Optional[str], tuple[Optional[str], Optional[str]]] = None
         criteria: Union[str, dict[str, float]] = "stress_only"
+        real_layout_candidates: Union[str, list[str]] = field(default_factory=lambda: [
+            "neato", "sfdp", "spring", "spectral", "kamada_kawai", "fa2", "pmds"
+        ])
         alternating_mode: str = "step"
         generator_frequency: Union[int, float] = 1
         discriminator_frequency: Union[int, float] = 1
@@ -48,7 +53,6 @@ class SmartGDLightningModule(BaseLightningModule):
         self.discriminator: Optional[nn.Module] = None
 
         # Data
-        self.layout_manager: Optional[LayoutSyncer] = None
         self.real_layout_store: Optional[dict[str, np.ndarray]] = None
         self.replacement_counter: Optional[dict[str, int]] = None
 
@@ -70,32 +74,35 @@ class SmartGDLightningModule(BaseLightningModule):
             config.generator_spec = (config.generator_spec, None)
         if not isinstance(config.discriminator_spec, tuple):
             config.discriminator_spec = (config.discriminator_spec, None)
+        if isinstance(config.real_layout_candidates, str):
+            config.real_layout_candidates = [config.real_layout_candidates]
         # TODO: load hparams directly from hparams.yml for existing experiments
         return dict(
             dataset_name=config.dataset_name,
             generator=dict(
-                meta=self.syncer.load_metadata(
+                meta=self.model_syncer.load_metadata(
                     name=config.generator_spec[0],
                     version=config.generator_spec[1]
                 ),
-                args=self.syncer.load_arguments(
+                args=self.model_syncer.load_arguments(
                     name=config.generator_spec[0],
                     version=config.generator_spec[1],
                     serialization=str
                 )
             ),
             discriminator=dict(
-                meta=self.syncer.load_metadata(
+                meta=self.model_syncer.load_metadata(
                     name=config.discriminator_spec[0],
                     version=config.discriminator_spec[1]
                 ),
-                args=self.syncer.load_arguments(
+                args=self.model_syncer.load_arguments(
                     name=config.discriminator_spec[0],
                     version=config.discriminator_spec[1],
                     serialization=str
                 )
             ),
             criteria_weights=config.criteria,
+            real_layout_candidates=config.real_layout_candidates,
             alternating_mode=config.alternating_mode,
             generator_frequency=config.generator_frequency,
             discriminator_frequency=config.discriminator_frequency,
@@ -104,39 +111,76 @@ class SmartGDLightningModule(BaseLightningModule):
             lr_gamma=config.lr_gamma
         )
 
-    def prepare_data(self):
-        super().prepare_data()
-        self.layout_manager = LayoutSyncer.get_default_syncer(self.dataset.name)
-        # TODO: load by hparams
-        self.real_layout_store = self.layout_manager.load(name="neato")
-        self.replacement_counter = {k: 0 for k in self.real_layout_store}
+    def on_prepare_data(self, dataset) -> None:
+        if len(self.hparams.real_layout_candidates) <= 1:
+            return
+        layout_params = dict(
+            candidates=self.hparams.real_layout_candidates,
+            criteria=self.hparams.criteria_weights
+        )
+        if self.layout_syncer.exists(name="ranked", params=layout_params):
+            return
+        critic = CompositeCritic(
+            criteria_weights=self.hparams.criteria_weights,
+            batch_reduce=None
+        )
+        layout_stores = {
+            layout: self.layout_syncer.load(name=layout)
+            for layout in self.hparams.real_layout_candidates
+        }
+        real_layout_store = {}
+        print("Generating real layouts...")
+        for data in tqdm(dataset, desc="Generate Real"):
+            scores = torch.cat([
+                # TODO: merge data into batch first
+                critic(GraphLayout.from_data(data, kvstore=store))
+                for layout, store in layout_stores.items()
+            ])
+            best_layout = list(layout_stores)[scores.argmin()]
+            real_layout_store[data.name] = layout_stores[best_layout][data.name]
+        if not self.layout_syncer.exists(name="ranked", params=layout_params):
+            print("Uploading real layouts...")
+            self.layout_syncer.save(real_layout_store, name="ranked", params=layout_params)
+
+    def load_generator(self, generator_config: dict[str, Any]):
+        self.generator = GeneratorDataAdaptor(self.model_syncer.load(
+            name=generator_config["meta"]["model_name"],
+            version=generator_config["meta"]["md5_digest"],
+        ))
+
+    def load_discriminator(self, discriminator_config: dict[str, Any]):
+        self.discriminator = DiscriminatorDataAdaptor(self.model_syncer.load(
+            name=discriminator_config["meta"]["model_name"],
+            version=discriminator_config["meta"]["md5_digest"],
+        ))
 
     def setup(self, stage: str) -> None:
-        if not self.critic:
-            self.critic = CompositeCritic(
-                criteria_weights=self.hparams.criteria_weights,
-                batch_reduce=None
-            )
+        super().setup(stage)
         if not self.generator:
-            self.generator = self.syncer.load(
-                name=self.hparams.generator["meta"]["model_name"],
-                version=self.hparams.generator["meta"]["md5_digest"]
-            )
+            self.load_generator(self.hparams.generator)
         if not self.discriminator:
-            self.discriminator = self.syncer.load(
-                name=self.hparams.discriminator["meta"]["model_name"],
-                version=self.hparams.discriminator["meta"]["md5_digest"]
+            self.load_discriminator(self.hparams.discriminator)
+        self.critic = CompositeCritic(
+            criteria_weights=self.hparams.criteria_weights,
+            batch_reduce=None
+        )
+        if len(self.hparams.real_layout_candidates) == 0:
+            raise NotImplementedError  # TODO: use random layout
+        if len(self.hparams.real_layout_candidates) == 1:
+            assert self.layout_syncer.exists(name=self.hparams.real_layout_candidates[0]), "Layout not found!"
+            self.real_layout_store = self.layout_syncer.load(name=self.hparams.real_layout_candidates[0])
+        else:
+            layout_params = dict(
+                candidates=self.hparams.real_layout_candidates,
+                criteria=self.hparams.criteria_weights
             )
+            assert self.layout_syncer.exists(name="ranked", params=layout_params), "Layout not found!"
+            self.real_layout_store = self.layout_syncer.load(name="ranked", params=layout_params)
+        self.replacement_counter = defaultdict(int)
 
     def on_load_checkpoint(self, checkpoint: dict[str, Any]):
-        self.generator = self.syncer.load(
-            name=checkpoint["hyper_parameters"]["generator"]["meta"]["model_name"],
-            version=checkpoint["hyper_parameters"]["generator"]["meta"]["md5_digest"]
-        )
-        self.discriminator = self.syncer.load(
-            name=checkpoint["hyper_parameters"]["discriminator"]["meta"]["model_name"],
-            version=checkpoint["hyper_parameters"]["discriminator"]["meta"]["md5_digest"]
-        )
+        self.load_generator(checkpoint["hyper_parameters"]["generator"])
+        self.load_discriminator(checkpoint["hyper_parameters"]["discriminator"])
         self.real_layout_store = checkpoint["real_layout_store"]
         self.real_layout_store = checkpoint["replacement_counter"]
 

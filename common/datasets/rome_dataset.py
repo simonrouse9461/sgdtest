@@ -3,6 +3,7 @@ from .utils import s3_dataset_syncing
 
 import os
 import re
+import hashlib
 from typing import Callable, Optional
 
 from tqdm.auto import tqdm
@@ -12,7 +13,7 @@ import torch_geometric as pyg
 import networkx as nx
 
 
-@s3_dataset_syncing
+@s3_dataset_syncing  # TODO: make it work with multiple dataloader workers
 class RomeDataset(pyg.data.InMemoryDataset):
 
     ROME_DEFAULT_URL: str = "https://www.graphdrawing.org/download/rome-graphml.tgz"
@@ -63,6 +64,10 @@ class RomeDataset(pyg.data.InMemoryDataset):
             if nx.is_connected(G):  # TODO: use dataset filter
                 yield nx.convert_node_labels_to_integers(G)
 
+    @staticmethod
+    def hash(string: str):
+        return int(hashlib.md5(string.encode("utf-8")).hexdigest(), 16) % 10**8
+
     def convert(self, G):
         apsp = dict(nx.all_pairs_shortest_path_length(G))
         init_pos = torch.tensor(np.array(list(self.initializer(G).values())))
@@ -77,13 +82,22 @@ class RomeDataset(pyg.data.InMemoryDataset):
         return pyg.data.Data(
             G=G,
             pos=init_pos,
-            edge_index=edge_index,
-            d_attr=d,
-            full_index=full_index,
-            adj_index=adj_index,
             n=G.number_of_nodes(),
-            m=G.number_of_edges(),
             name=G.graph["name"],
+            graph_id=self.hash(G.graph["name"]),
+            dataset_id=self.hash(self.name),
+
+            edge_index=edge_index,
+            edge_m=edge_index.shape[-1] // 2,  # TODO: use index to avoid duplicated data
+            edge_d_attr=d,
+
+            full_index=full_index,
+            full_m=full_index.shape[-1] // 2,
+            full_d_attr=d,
+
+            adj_index=adj_index,
+            adj_m=G.number_of_edges(),
+            adj_d_attr=torch.ones(adj_index.shape[-1])  # TODO: avoid hard-coding
         )
 
     def download(self):

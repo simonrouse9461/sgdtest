@@ -49,7 +49,7 @@ def s3_dataset_syncing(_cls: Optional[Type[pyg.data.Dataset]] = None, /, *,
 
                 collection = bucket.objects.filter(Prefix=prefix)
                 jobs = list(map(lambda obj: (bucket_name, obj.key, f"{DATASET_ROOT}/{obj.key}"), collection))
-                pool = multiprocessing.Pool(multiprocessing.cpu_count() * 10, _initialize_s3_client)
+                pool = multiprocessing.Pool(multiprocessing.cpu_count() * 8, _initialize_s3_client)
                 results_iter = pool.imap_unordered(_download_from_s3, jobs)
 
                 for _ in tqdm(results_iter, total=len(jobs), desc="Download from S3"):
@@ -80,7 +80,7 @@ def s3_dataset_syncing(_cls: Optional[Type[pyg.data.Dataset]] = None, /, *,
                             yield bucket_name, re.sub(f"^{DATASET_ROOT}/", "", path), path
 
                 jobs = list(get_jobs())
-                pool = multiprocessing.Pool(multiprocessing.cpu_count() * 10, _initialize_s3_client)
+                pool = multiprocessing.Pool(multiprocessing.cpu_count() * 8, _initialize_s3_client)
                 results_iter = pool.imap_unordered(_upload_to_s3, jobs)
 
                 for _ in tqdm(results_iter, total=len(jobs), desc="Upload to S3"):

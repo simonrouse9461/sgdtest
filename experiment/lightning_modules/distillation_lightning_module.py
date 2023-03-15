@@ -44,22 +44,22 @@ class DistillationLightningModule(BaseLightningModule):
         return dict(
             dataset_name=config.dataset_name,
             teacher=dict(
-                meta=self.syncer.load_metadata(
+                meta=self.model_syncer.load_metadata(
                     name=config.teacher_spec[0],
                     version=config.teacher_spec[1]
                 ),
-                args=self.syncer.load_arguments(
+                args=self.model_syncer.load_arguments(
                     name=config.teacher_spec[0],
                     version=config.teacher_spec[1],
                     serialization=str
                 )
             ),
             student=dict(
-                meta=self.syncer.load_metadata(
+                meta=self.model_syncer.load_metadata(
                     name=config.student_spec[0],
                     version=config.student_spec[1]
                 ),
-                args=self.syncer.load_arguments(
+                args=self.model_syncer.load_arguments(
                     name=config.student_spec[0],
                     version=config.student_spec[1],
                     serialization=str
@@ -72,22 +72,22 @@ class DistillationLightningModule(BaseLightningModule):
 
     def setup(self, stage: str) -> None:
         if not self.teacher:
-            self.teacher = self.syncer.load(
+            self.teacher = self.model_syncer.load(
                 name=self.hparams.teacher["meta"]["model_name"],
                 version=self.hparams.teacher["meta"]["md5_digest"]
             )
         if not self.student:
-            self.student = self.syncer.load(
+            self.student = self.model_syncer.load(
                 name=self.hparams.student["meta"]["model_name"],
                 version=self.hparams.student["meta"]["md5_digest"]
             )
 
     def on_load_checkpoint(self, checkpoint: dict[str, Any]):
-        self.teacher = self.syncer.load(
+        self.teacher = self.model_syncer.load(
             name=checkpoint["hyper_parameters"]["teacher"]["meta"]["model_name"],
             version=checkpoint["hyper_parameters"]["teacher"]["meta"]["md5_digest"]
         )
-        self.student = self.syncer.load(
+        self.student = self.model_syncer.load(
             name=checkpoint["hyper_parameters"]["student"]["meta"]["model_name"],
             version=checkpoint["hyper_parameters"]["student"]["meta"]["md5_digest"]
         )

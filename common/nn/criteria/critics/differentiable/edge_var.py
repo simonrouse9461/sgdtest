@@ -1,6 +1,6 @@
 from smartgd.common.data import GraphLayout
-from .base_critic import BaseCritic
-from .composite_critic import CompositeCritic
+from ..base_critic import BaseCritic
+from ..composite_critic import CompositeCritic
 
 from typing import Optional
 
