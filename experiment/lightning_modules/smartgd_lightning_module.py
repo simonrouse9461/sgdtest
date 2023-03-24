@@ -1,18 +1,19 @@
 from smartgd.common.data import (
-    GraphLayout,
+    GraphStruct,
+    GraphDrawingData
+)
+from smartgd.common.nn import (
     BaseTransformation,
     RescaleByStress,
     Compose,
     Center,
-    NormalizeRotation
-)
-from smartgd.common.datasets import BatchAppendColumn
-from smartgd.common.nn.criteria import (
+    NormalizeRotation,
     CompositeCritic,
     RGANCriterion,
-    BaseAdverserialCriterion,
+    BaseAdverserialCriterion
 )
 from ..data_adaptors import DiscriminatorDataAdaptor, GeneratorDataAdaptor
+from ..utils import RandomLayoutStore
 from .base_lightning_module import BaseLightningModule
 
 from collections import defaultdict
@@ -31,19 +32,22 @@ class SmartGDLightningModule(BaseLightningModule):
 
     @dataclass
     class Config:
-        dataset_name: str = "Rome"
-        generator_spec: Union[Optional[str], tuple[Optional[str], Optional[str]]] = None
-        discriminator_spec: Union[Optional[str], tuple[Optional[str], Optional[str]]] = None
-        criteria: Union[str, dict[str, float]] = "stress_only"
-        real_layout_candidates: Union[str, list[str]] = field(default_factory=lambda: [
+        dataset_name:               str = "Rome"
+        generator_spec:             Union[Optional[str], tuple[Optional[str], Optional[str]]] = None
+        discriminator_spec:         Union[Optional[str], tuple[Optional[str], Optional[str]]] = None
+        criteria:                   Union[str, dict[str, float]] = "stress_only"
+        static_transform:           Union[str, list[str], None] = None
+        dynamic_transform:          Union[str, list[str], None] = None
+        init_layout_method:         Optional[str] = "pmds"
+        real_layout_candidates:     Union[str, list[str]] = field(default_factory=lambda: [
             "neato", "sfdp", "spring", "spectral", "kamada_kawai", "fa2", "pmds"
         ])
-        alternating_mode: str = "step"
-        generator_frequency: Union[int, float] = 1
-        discriminator_frequency: Union[int, float] = 1
-        batch_size: int = 16
-        learning_rate: float = 1e-3
-        lr_gamma: float = 0.998
+        alternating_mode:           str = "step"
+        generator_frequency:        Union[int, float] = 1
+        discriminator_frequency:    Union[int, float] = 1
+        batch_size:                 int = 16
+        learning_rate:              float = 1e-3
+        lr_gamma:                   float = 0.998
 
     def __init__(self, config: Optional[Config]):
         super().__init__(config)
@@ -53,6 +57,7 @@ class SmartGDLightningModule(BaseLightningModule):
         self.discriminator: Optional[nn.Module] = None
 
         # Data
+        self.init_layout_store: Optional[dict[str, np.ndarray]] = None
         self.real_layout_store: Optional[dict[str, np.ndarray]] = None
         self.replacement_counter: Optional[dict[str, int]] = None
 
@@ -64,7 +69,6 @@ class SmartGDLightningModule(BaseLightningModule):
             NormalizeRotation(),
             RescaleByStress()
         )
-        self.append_column: BatchAppendColumn = BatchAppendColumn()
 
     def generate_hyperparameters(self, config: Config) -> dict[str, Any]:
         # TODO: load from hparams
@@ -76,6 +80,14 @@ class SmartGDLightningModule(BaseLightningModule):
             config.discriminator_spec = (config.discriminator_spec, None)
         if isinstance(config.real_layout_candidates, str):
             config.real_layout_candidates = [config.real_layout_candidates]
+        if config.static_transform is None:
+            config.static_transform = []
+        if isinstance(config.static_transform, str):
+            config.static_transform = [config.static_transform]
+        if config.dynamic_transform is None:
+            config.dynamic_transform = []
+        if isinstance(config.dynamic_transform, str):
+            config.dynamic_transform = [config.dynamic_transform]
         # TODO: load hparams directly from hparams.yml for existing experiments
         return dict(
             dataset_name=config.dataset_name,
@@ -102,6 +114,9 @@ class SmartGDLightningModule(BaseLightningModule):
                 )
             ),
             criteria_weights=config.criteria,
+            static_transform=config.static_transform,
+            dynamic_transform=config.dynamic_transform,
+            init_layout_method=config.init_layout_method,
             real_layout_candidates=config.real_layout_candidates,
             alternating_mode=config.alternating_mode,
             generator_frequency=config.generator_frequency,
@@ -133,7 +148,7 @@ class SmartGDLightningModule(BaseLightningModule):
         for data in tqdm(dataset, desc="Generate Real"):
             scores = torch.cat([
                 # TODO: merge data into batch first
-                critic(GraphLayout.from_data(data, kvstore=store))
+                critic(GraphStruct.from_data(data, kvstore=store))
                 for layout, store in layout_stores.items()
             ])
             best_layout = list(layout_stores)[scores.argmin()]
@@ -176,20 +191,25 @@ class SmartGDLightningModule(BaseLightningModule):
             )
             assert self.layout_syncer.exists(name="ranked", params=layout_params), "Layout not found!"
             self.real_layout_store = self.layout_syncer.load(name="ranked", params=layout_params)
+        if self.hparams.init_layout_method:
+            self.init_layout_store = self.layout_syncer.load(name=self.hparams.init_layout_method)
+        else:
+            template_layout_store = self.layout_syncer.load(name="random")
+            self.init_layout_store = RandomLayoutStore(template=template_layout_store)
         self.replacement_counter = defaultdict(int)
 
     def on_load_checkpoint(self, checkpoint: dict[str, Any]):
         self.load_generator(checkpoint["hyper_parameters"]["generator"])
         self.load_discriminator(checkpoint["hyper_parameters"]["discriminator"])
-        self.real_layout_store = dict(checkpoint["real_layout_store"])  # TODO: remove dict later
-        self.replacement_counter = defaultdict(int, checkpoint["replacement_counter"])  # TODO: remove defaultdict later
+        self.real_layout_store = checkpoint["real_layout_store"]
+        self.replacement_counter = checkpoint["replacement_counter"]
 
     def on_save_checkpoint(self, checkpoint: dict[str, Any]):
         checkpoint["real_layout_store"] = self.real_layout_store
         checkpoint["replacement_counter"] = self.replacement_counter
 
     def forward(self, batch: pyg.data.Data):
-        layout = GraphLayout.from_data(data=batch)
+        layout = batch.struct(self.init_layout_store)
         layout = self.canonicalize(layout)
         layout = self.generator(layout)
         return layout
@@ -281,12 +301,17 @@ class SmartGDLightningModule(BaseLightningModule):
     #         )
     #     )
 
-    def training_step(self, batch: pyg.data.Batch, batch_idx: int, optimizer_idx: int) -> dict:
-        fake_layout = self.canonicalize(self(batch))
+    def training_step(self, batch: GraphDrawingData, batch_idx: int, optimizer_idx: int) -> dict:
+        batch = batch.post_transform(self.hparams.static_transform)
+        fake_layout = self(batch)
+        fake_layout = self.canonicalize(fake_layout)
+        fake_layout = batch.struct(fake_layout, post_transform=self.hparams.dynamic_transform)
         fake_pred = self.discriminator(fake_layout)
         fake_score, fake_raw_scores = self.critic(fake_layout), self.critic.get_raw_scores()
 
-        real_layout = self.canonicalize(GraphLayout.from_data(data=batch, kvstore=self.real_layout_store))
+        real_layout = batch.struct(self.real_layout_store)
+        real_layout = self.canonicalize(real_layout)
+        real_layout = batch.struct(real_layout, post_transform=self.hparams.dynamic_transform)
         real_pred = self.discriminator(real_layout)
         real_score = self.critic(real_layout)
 
@@ -305,8 +330,8 @@ class SmartGDLightningModule(BaseLightningModule):
         else:
             assert False, f"Unknown optimizer with index {optimizer_idx}."
 
-        batch = self.append_column(batch=batch, tensor=fake_layout.pos, name="fake_pos")
-        batch = self.append_column(batch=batch, tensor=negative, name="flagged")
+        batch = batch.append(tensor=fake_layout.pos, name="fake_pos")
+        batch = batch.append(tensor=negative, name="flagged")
 
         self.log_train_step(
             discriminator_loss=discriminator_loss.item(),
@@ -340,7 +365,11 @@ class SmartGDLightningModule(BaseLightningModule):
         )
 
     def validation_step(self, batch: pyg.data.Batch, batch_idx: int):
+        batch = batch.post_transform(self.hparams.static_transform)
+        # TODO: all metrics need to be evaluated
+        # TODO: evaluate SPC
         fake_layout = self.canonicalize(self(batch))
+        fake_layout = batch.struct(fake_layout, post_transform=self.hparams.dynamic_transform)
         score, raw_scores = self.critic(fake_layout), self.critic.get_raw_scores()
         self.log_val_step(
             score=score.mean().item(),

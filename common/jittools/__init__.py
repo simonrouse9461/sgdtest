@@ -1,3 +1,3 @@
 from .jittable import *
-from .jittable_recover import *
+from .jittable_restore import *
 from .torchscript_utils import *

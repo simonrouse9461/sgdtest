@@ -1,4 +1,4 @@
-from smartgd.common.data import GraphLayout, BaseTransformation, RescaleByStress
+from smartgd.common.data import GraphStruct, BaseTransformation, RescaleByStress
 from smartgd.common.datasets import RomeDataset, BatchAppendColumn
 from smartgd.common.syncing import LayoutSyncer, ModelSyncer
 from .base_lightning_module import BaseLightningModule
@@ -93,7 +93,7 @@ class DistillationLightningModule(BaseLightningModule):
         )
 
     def forward(self, batch: pyg.data.Data):
-        layout = GraphLayout.from_data(data=batch)
+        layout = GraphStruct.from_data(data=batch)
         layout = self.canonicalize(layout)
         layout = self.student(layout)
         return layout
@@ -130,7 +130,7 @@ class DistillationLightningModule(BaseLightningModule):
         )
 
     def training_step(self, batch: pyg.data.Batch, batch_idx: int) -> dict:
-        layout = self.canonicalize(GraphLayout.from_data(data=batch))
+        layout = self.canonicalize(GraphStruct.from_data(data=batch))
         pred = self.student(layout)
         gt = self.teacher(layout)
 
@@ -140,7 +140,7 @@ class DistillationLightningModule(BaseLightningModule):
         return dict(loss=loss)
 
     def validation_step(self, batch: pyg.data.Batch, batch_idx: int):
-        layout = self.canonicalize(GraphLayout.from_data(data=batch))
+        layout = self.canonicalize(GraphStruct.from_data(data=batch))
         pred = self.student(layout)
         gt = self.teacher(layout)
 

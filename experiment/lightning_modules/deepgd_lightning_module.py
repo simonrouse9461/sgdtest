@@ -1,4 +1,4 @@
-from smartgd.common.data import GraphLayout, BaseTransformation, RescaleByStress
+from smartgd.common.data import GraphStruct, BaseTransformation, RescaleByStress
 from smartgd.common.datasets import RomeDataset, BatchAppendColumn
 from smartgd.common.syncing import LayoutSyncer, ModelSyncer
 from smartgd.common.nn.criteria import (
@@ -106,7 +106,7 @@ class DeepGDLightningModule(L.LightningModule, LoggingMixin):
         pass
 
     def forward(self, batch: pyg.data.Data):
-        layout = GraphLayout.from_data(data=batch)
+        layout = GraphStruct.from_data(data=batch)
         layout = self.canonicalize(layout)
         layout = self.generator(layout)
         return layout

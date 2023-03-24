@@ -34,7 +34,7 @@ def generate_layout(G: nx.Graph, method: str, seed: Optional[int] = None, draw: 
         case "sgd2":
             pos = s_gd2.layout(*zip(*G.edges), random_seed=manual_seed)
             layout = {i: p for i, p in zip(G.nodes, pos.tolist())}
-        case "spring":
+        case "spring" | "random":
             layout = getattr(nx.drawing.layout, f'{method}_layout')(G, seed=manual_seed)
         case _:
             if hasattr(nx.drawing.layout, f'{method}_layout'):
