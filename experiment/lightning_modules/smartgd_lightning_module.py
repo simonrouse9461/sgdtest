@@ -42,6 +42,7 @@ class SmartGDLightningModule(BaseLightningModule):
         real_layout_candidates:     Union[str, list[str]] = field(default_factory=lambda: [
             "neato", "sfdp", "spring", "spectral", "kamada_kawai", "fa2", "pmds"
         ])
+        self_challenging:           bool = True
         alternating_mode:           str = "step"
         generator_frequency:        Union[int, float] = 1
         discriminator_frequency:    Union[int, float] = 1
@@ -118,6 +119,7 @@ class SmartGDLightningModule(BaseLightningModule):
             dynamic_transform=config.dynamic_transform,
             init_layout_method=config.init_layout_method,
             real_layout_candidates=config.real_layout_candidates,
+            self_challenging=config.self_challenging,
             alternating_mode=config.alternating_mode,
             generator_frequency=config.generator_frequency,
             discriminator_frequency=config.discriminator_frequency,
@@ -346,20 +348,21 @@ class SmartGDLightningModule(BaseLightningModule):
         batch = step_output["batch"]
         replacements = 0
         initial_replacements = 0
-        for data in batch.to_data_list():
-            if data.flagged.item():
-                self.real_layout_store[data.name] = data.fake_pos.detach().cpu().numpy()
-                self.replacement_counter[data.name] += 1
-                if self.replacement_counter[data.name] == 1:
-                    initial_replacements += 1
-                replacements += 1
+        if self.hparams.self_challenging:
+            for data in batch.to_data_list():
+                if data.flagged.item():
+                    self.real_layout_store[data.name] = data.fake_pos.detach().cpu().numpy()
+                    self.replacement_counter[data.name] += 1
+                    if self.replacement_counter[data.name] == 1:
+                        initial_replacements += 1
+                    replacements += 1
         self.log_train_step_sum_on_epoch_end(
             replacements=replacements,
             initial_replacements=initial_replacements
         )
         return step_output["loss"]
 
-    def on_training_epoch_end(self, outputs: list[torch.Tensor]) -> None:
+    def training_epoch_end(self, outputs: list[torch.Tensor]) -> None:
         self.log_epoch_end(
             total_replacements=sum(self.replacement_counter.values()),
             total_unique_replacements=len(self.replacement_counter)
