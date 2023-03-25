@@ -32,15 +32,15 @@ class Crossings(BaseLayoutMetric):
 
     def compute(self, layout: GraphStruct) -> torch.Tensor:
         # get pqrs
-        (s1, e1, s2, e2) = layout.edge_pair_index
+        (s1, s2), (e1, e2) = layout.edge_pair_index
         p, q = layout.pos[s1], layout.pos[s2]
         r, s = layout.pos[e1] - p, layout.pos[e2] - q
 
         # shrink by eps
         p += self.eps * r
         q += self.eps * s
-        r *= 1 - 2*self.eps
-        s *= 1 - 2*self.eps
+        r *= 1 - 2 * self.eps
+        s *= 1 - 2 * self.eps
 
         # get intersection
         qmp = q - p
@@ -74,4 +74,4 @@ class Crossings(BaseLayoutMetric):
             )
         ).float()
 
-        return torch_scatter.scatter(xing, layout.batch_index[s1], reduce='sum')
+        return torch_scatter.scatter(xing, layout.batch[s1], reduce="sum")

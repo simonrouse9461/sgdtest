@@ -146,9 +146,10 @@ class SmartGDLightningModule(BaseLightningModule):
         real_layout_store = {}
         print("Generating real layouts...")
         for data in tqdm(dataset, desc="Generate Real"):
+            data = data.post_transform(self.hparams.static_transform)
             scores = torch.cat([
                 # TODO: merge data into batch first
-                critic(GraphStruct.from_data(data, kvstore=store))
+                critic(data.struct(store, post_transform=self.hparams.dynamic_transform))
                 for layout, store in layout_stores.items()
             ])
             best_layout = list(layout_stores)[scores.argmin()]
@@ -358,7 +359,7 @@ class SmartGDLightningModule(BaseLightningModule):
         )
         return step_output["loss"]
 
-    def training_epoch_end(self, outputs: list[torch.Tensor]) -> None:
+    def on_training_epoch_end(self, outputs: list[torch.Tensor]) -> None:
         self.log_epoch_end(
             total_replacements=sum(self.replacement_counter.values()),
             total_unique_replacements=len(self.replacement_counter)

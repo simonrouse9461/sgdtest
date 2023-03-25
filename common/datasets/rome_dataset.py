@@ -20,17 +20,19 @@ DATATYPE = TypeVar("DATATYPE", bound=pyg.data.Data)
 @s3_dataset_syncing  # TODO: make it work with multiple dataloader workers
 class RomeDataset(pyg.data.InMemoryDataset):
 
-    DEFAULT_NAME: str = "Rome"
-    DEFAULT_URL: str = "https://www.graphdrawing.org/download/rome-graphml.tgz"
+    DEFAULT_NAME = "Rome"
+    DEFAULT_URL = "https://www.graphdrawing.org/download/rome-graphml.tgz"
     GRAPH_NAME_REGEX = re.compile(r"grafo(\d+)\.(\d+)")
 
     def __init__(self, *,
                  url: str = DEFAULT_URL,
                  root: str = DATASET_ROOT,
                  name: str = DEFAULT_NAME,
+                 index: Optional[list[str]] = None,
                  datatype: type[DATATYPE] = GraphDrawingData):
         self.url: str = url
         self.name: str = name
+        self.index: Optional[list[str]] = index
         self.datatype: type[DATATYPE] = datatype
         super().__init__(
             root=os.path.join(root, name),
@@ -55,7 +57,7 @@ class RomeDataset(pyg.data.InMemoryDataset):
 
     @property
     def processed_file_names(self) -> list[str]:
-        return ["data.pt"]
+        return ["data.pt", "index.txt"]
 
     def generate(self) -> Iterator[nx.Graph]:
         def key(path):
@@ -74,8 +76,16 @@ class RomeDataset(pyg.data.InMemoryDataset):
         pyg.data.extract_tar(f'{self.raw_dir}/rome-graphml.tgz', self.raw_dir)
 
     def process(self) -> None:
-        data_list = map(self.datatype, self.generate())
+        G_list = list(self.generate())
+        if self.index is None:
+            self.index = [G.graph["name"] for G in G_list]
+        else:
+            G_dict = {G.graph["name"]: G for G in G_list}
+            G_list = [G_dict[name] for name in self.index]
+        data_list = map(self.datatype, G_list)
         data_list = filter(self.pre_filter, data_list)
         data_list = map(self.pre_transform, data_list)
         data, slices = self.collate(list(data_list))
         torch.save((data, slices), self.processed_paths[0])
+        with open(self.processed_paths[1], "w") as index_file:
+            index_file.write("\n".join(self.index))

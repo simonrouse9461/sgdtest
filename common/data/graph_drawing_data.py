@@ -32,7 +32,7 @@ class GraphDrawingData(BaseGraphDrawingData, DrawingMixin):
     def _(self, pos: None, post_transform: Optional[list[str]]) -> GraphStruct:
         assert self.pos is not None
         data = self.post_transform(post_transform)
-        batch_index = data.batch if isinstance(data, Batch) else torch.ones(data.num_nodes).to(data.device)
+        batch_index = data.batch if isinstance(data, Batch) else torch.ones(data.num_nodes).long().to(data.device)
         return GraphStruct(
             pos=data.pos,
             n=data.n,

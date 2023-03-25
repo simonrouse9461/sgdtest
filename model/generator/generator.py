@@ -49,9 +49,9 @@ class Generator(nn.Module):
         dp: float = 0.1
 
     params: Params = Params(
-        num_blocks=12,
+        num_blocks=10,
         block_depth=2,
-        block_width=16,
+        block_width=8,
         block_output_dim=8,
         edge_net_depth=1,
         edge_net_width=16,

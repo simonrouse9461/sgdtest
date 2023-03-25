@@ -166,6 +166,8 @@ class BaseGraphDrawingData(Data):
                     if metaindex_key not in self.field_annotations():
                         continue
                     indexer = getattr(self, metaindex_key)
+                    if indexer is None:
+                        return None
                     if suffix == "index":
                         indexer = slice(None), indexer
                     return getattr(self, f"perm_{suffix}")[indexer]

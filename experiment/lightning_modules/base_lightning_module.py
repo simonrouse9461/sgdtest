@@ -52,7 +52,7 @@ class BaseLightningModule(L.LightningModule, LoggingMixin, ABC):
         # TODO: dynamically load dataset by name
         self.dataset = RomeDataset()  # TODO: make sure it's not shuffled
         # TODO: create datamodule from within dataset
-        self.datamodule = pyg.data.LightningDataset(
+        self.datamodule = pyg.data.lightning.LightningDataset(
             train_dataset=self.dataset[:10000],
             val_dataset=self.dataset[11000:],
             test_dataset=self.dataset[10000:11000],
