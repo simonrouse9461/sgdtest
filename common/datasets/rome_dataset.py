@@ -41,6 +41,8 @@ class RomeDataset(pyg.data.InMemoryDataset):
             pre_filter=self.datatype.pre_filter
         )
         self.data, self.slices = torch.load(self.processed_paths[0])
+        data_list = map(datatype.static_transform, self)
+        self.data, self.slices = self.collate(list(data_list))
 
     def _parse_metadata(self, logfile: str) -> Iterator[str]:
         with open(logfile) as fin:
@@ -77,6 +79,7 @@ class RomeDataset(pyg.data.InMemoryDataset):
 
     def process(self) -> None:
         G_list = list(self.generate())
+        # TODO: reorder with index during initialization
         if self.index is None:
             self.index = [G.graph["name"] for G in G_list]
         else:

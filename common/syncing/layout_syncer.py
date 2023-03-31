@@ -28,10 +28,16 @@ class LayoutSyncer:
     def _get_file_path(self, name: str, params: Optional[dict]) -> str:
         return f"{self.dirpath}/{name}{self._get_params_str(params)}.pkl"
 
+    def _get_meta_file_path(self, name: str, params: Optional[dict]) -> str:
+        return f"{self.dirpath}/{name}{self._get_params_str(params)}.metadata.pkl"
+
     @normalize_args
-    def save(self, layout_dict: dict, *, name: str, params: Optional[dict] = None):
+    def save(self, layout_dict: dict, *, name: str, metadata: Optional[dict] = None, params: Optional[dict] = None):
         with self.fs.open(self._get_file_path(name, params), "wb") as fout:
             pickle.dump(dict(layout_dict), fout)
+        if metadata is not None:
+            with self.fs.open(self._get_meta_file_path(name, params), "wb") as fout:
+                pickle.dump(dict(metadata), fout)
         self.evict_cache(name=name, params=params)
 
     @normalize_args
@@ -42,6 +48,11 @@ class LayoutSyncer:
     @cached({})
     def load(self, *, name: str, params: Optional[dict] = None) -> dict[str, np.ndarray]:
         with self.fs.open(self._get_file_path(name, params), "rb") as fin:
+            return dict(pickle.load(fin))
+
+    @normalize_args
+    def load_metadata(self, *, name: str, params: Optional[dict] = None) -> dict:
+        with self.fs.open(self._get_meta_file_path(name, params), "rb") as fin:
             return dict(pickle.load(fin))
 
     @normalize_args

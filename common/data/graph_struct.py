@@ -24,6 +24,9 @@ class GraphStruct:
     m:                  LongTensor
     x:                  FloatTensor
     batch:              LongTensor
+    num_nodes:          int
+    num_edges:          int
+    num_graphs:         int
     perm_index:         LongTensor
     perm_attr:          FloatTensor
     perm_weight:        FloatTensor
@@ -79,12 +82,16 @@ class GraphStruct:
         return self.batch[self.edge_src_index]
 
     def __call__(self, pos: torch.FloatTensor):  # TODO: figure out how to use `-> Self`
+        # TODO: use __annotations__
         return GraphStruct(
             pos=pos,
             n=self.n,
             m=self.m,
             x=self.x,
             batch=self.batch,
+            num_nodes=self.num_nodes,
+            num_edges=self.num_edges,
+            num_graphs=self.num_graphs,
             perm_index=self.perm_index,
             perm_attr=self.perm_attr,
             perm_weight=self.perm_weight,
@@ -100,7 +107,6 @@ class GraphStruct:
             edge_pair_index=self.edge_pair_index
         )
 
-    # TODO: define in superclass
     @jit.unused
     def __repr__(self) -> str:
         shape_dict = {

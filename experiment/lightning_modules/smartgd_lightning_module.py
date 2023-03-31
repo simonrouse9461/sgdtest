@@ -1,6 +1,6 @@
 from smartgd.common.data import (
     GraphStruct,
-    GraphDrawingData
+    GraphDrawingData,
 )
 from smartgd.common.nn import (
     BaseTransformation,
@@ -10,7 +10,8 @@ from smartgd.common.nn import (
     NormalizeRotation,
     CompositeCritic,
     RGANCriterion,
-    BaseAdverserialCriterion
+    BaseAdverserialCriterion,
+    SPC
 )
 from ..data_adaptors import DiscriminatorDataAdaptor, GeneratorDataAdaptor
 from ..utils import RandomLayoutStore
@@ -18,7 +19,7 @@ from .base_lightning_module import BaseLightningModule
 
 from collections import defaultdict
 from dataclasses import dataclass, field
-from typing import Optional, Any, Union
+from typing import Optional, Any, Union, TypeVar
 
 import numpy as np
 import torch
@@ -26,6 +27,9 @@ from torch import nn
 import pytorch_lightning as L
 import torch_geometric as pyg
 from tqdm.auto import tqdm
+
+
+LayoutDict = dict[str, np.ndarray]
 
 
 class SmartGDLightningModule(BaseLightningModule):
@@ -36,8 +40,7 @@ class SmartGDLightningModule(BaseLightningModule):
         generator_spec:             Union[Optional[str], tuple[Optional[str], Optional[str]]] = None
         discriminator_spec:         Union[Optional[str], tuple[Optional[str], Optional[str]]] = None
         criteria:                   Union[str, dict[str, float]] = "stress_only"
-        static_transform:           Union[str, list[str], None] = None
-        dynamic_transform:          Union[str, list[str], None] = None
+        optional_data_fields:       Union[list[str], None] = None
         init_layout_method:         Optional[str] = "pmds"
         real_layout_candidates:     Union[str, list[str]] = field(default_factory=lambda: [
             "neato", "sfdp", "spring", "spectral", "kamada_kawai", "fa2", "pmds"
@@ -58,8 +61,11 @@ class SmartGDLightningModule(BaseLightningModule):
         self.discriminator: Optional[nn.Module] = None
 
         # Data
-        self.init_layout_store: Optional[dict[str, np.ndarray]] = None
-        self.real_layout_store: Optional[dict[str, np.ndarray]] = None
+        GraphDrawingData.optional_fields = self.hparams.optional_data_fields
+        self.init_layout_store: Optional[LayoutDict] = None
+        self.real_layout_store: Optional[LayoutDict] = None
+        self.fake_layout_store: LayoutDict = {}
+        self.benchmark_layout_stores: Optional[dict[str, LayoutDict]] = None
         self.replacement_counter: Optional[dict[str, int]] = None
 
         # Functions
@@ -70,6 +76,7 @@ class SmartGDLightningModule(BaseLightningModule):
             NormalizeRotation(),
             RescaleByStress()
         )
+        self.spc: SPC = SPC(batch_reduce=None)
 
     def generate_hyperparameters(self, config: Config) -> dict[str, Any]:
         # TODO: load from hparams
@@ -81,14 +88,8 @@ class SmartGDLightningModule(BaseLightningModule):
             config.discriminator_spec = (config.discriminator_spec, None)
         if isinstance(config.real_layout_candidates, str):
             config.real_layout_candidates = [config.real_layout_candidates]
-        if config.static_transform is None:
-            config.static_transform = []
-        if isinstance(config.static_transform, str):
-            config.static_transform = [config.static_transform]
-        if config.dynamic_transform is None:
-            config.dynamic_transform = []
-        if isinstance(config.dynamic_transform, str):
-            config.dynamic_transform = [config.dynamic_transform]
+        if config.optional_data_fields is None:
+            config.optional_data_fields = []
         # TODO: load hparams directly from hparams.yml for existing experiments
         return dict(
             dataset_name=config.dataset_name,
@@ -115,8 +116,7 @@ class SmartGDLightningModule(BaseLightningModule):
                 )
             ),
             criteria_weights=config.criteria,
-            static_transform=config.static_transform,
-            dynamic_transform=config.dynamic_transform,
+            optional_data_fields=config.optional_data_fields,
             init_layout_method=config.init_layout_method,
             real_layout_candidates=config.real_layout_candidates,
             self_challenging=config.self_challenging,
@@ -146,19 +146,26 @@ class SmartGDLightningModule(BaseLightningModule):
             for layout in self.hparams.real_layout_candidates
         }
         real_layout_store = {}
+        real_layout_metadata = {}
         print("Generating real layouts...")
         for data in tqdm(dataset, desc="Generate Real"):
             data = data.post_transform(self.hparams.static_transform)
             scores = torch.cat([
                 # TODO: merge data into batch first
-                critic(data.struct(store, post_transform=self.hparams.dynamic_transform))
+                critic(self.canonicalize(data.make_struct(store, post_transform=self.hparams.dynamic_transform)))
                 for layout, store in layout_stores.items()
             ])
             best_layout = list(layout_stores)[scores.argmin()]
             real_layout_store[data.name] = layout_stores[best_layout][data.name]
+            real_layout_metadata[data.name] = dict(method=best_layout)
         if not self.layout_syncer.exists(name="ranked", params=layout_params):
             print("Uploading real layouts...")
-            self.layout_syncer.save(real_layout_store, name="ranked", params=layout_params)
+            self.layout_syncer.save(
+                real_layout_store,
+                name="ranked",
+                metadata=real_layout_metadata,
+                params=layout_params
+            )
 
     def load_generator(self, generator_config: dict[str, Any]):
         self.generator = GeneratorDataAdaptor(self.model_syncer.load(
@@ -200,6 +207,20 @@ class SmartGDLightningModule(BaseLightningModule):
             template_layout_store = self.layout_syncer.load(name="random")
             self.init_layout_store = RandomLayoutStore(template=template_layout_store)
         self.replacement_counter = defaultdict(int)
+        if stage == "test":
+            self.setup_test()
+
+    def setup_test(self) -> None:
+        self.benchmark_layout_stores = {
+            method: self.layout_syncer.load(name=method)
+            for method in self.hparams.real_layout_candidates
+        }
+        self.benchmark_layout_stores["real"] = self.layout_syncer.load(
+            name="ranked", params=dict(
+                candidates=self.hparams.real_layout_candidates,
+                criteria=self.hparams.criteria_weights
+            )
+        )
 
     def on_load_checkpoint(self, checkpoint: dict[str, Any]):
         self.load_generator(checkpoint["hyper_parameters"]["generator"])
@@ -211,10 +232,11 @@ class SmartGDLightningModule(BaseLightningModule):
         checkpoint["real_layout_store"] = self.real_layout_store
         checkpoint["replacement_counter"] = self.replacement_counter
 
-    def forward(self, batch: pyg.data.Data):
-        layout = batch.struct(self.init_layout_store)
-        layout = self.canonicalize(layout)
-        layout = self.generator(layout)
+    def forward(self, batch: GraphDrawingData):
+        layout = batch.make_struct(self.init_layout_store)
+        layout = batch.transform_struct(self.canonicalize, layout)
+        layout = batch.transform_struct(self.generator, layout)
+        self.fake_layout_store.update(batch.pos_dict())
         return layout
 
     def configure_callbacks(self) -> Union[L.Callback, list[L.Callback]]:
@@ -305,16 +327,12 @@ class SmartGDLightningModule(BaseLightningModule):
     #     )
 
     def training_step(self, batch: GraphDrawingData, batch_idx: int, optimizer_idx: int) -> dict:
-        batch = batch.post_transform(self.hparams.static_transform)
-        fake_layout = self(batch)
-        fake_layout = self.canonicalize(fake_layout)
-        fake_layout = batch.struct(fake_layout, post_transform=self.hparams.dynamic_transform)
+        fake_layout = batch.transform_struct(self.canonicalize, self(batch))
         fake_pred = self.discriminator(fake_layout)
         fake_score, fake_raw_scores = self.critic(fake_layout), self.critic.get_raw_scores()
 
-        real_layout = batch.struct(self.real_layout_store)
-        real_layout = self.canonicalize(real_layout)
-        real_layout = batch.struct(real_layout, post_transform=self.hparams.dynamic_transform)
+        real_layout = batch.make_struct(self.real_layout_store)
+        real_layout = batch.transform_struct(self.canonicalize, real_layout)
         real_pred = self.discriminator(real_layout)
         real_score = self.critic(real_layout)
 
@@ -368,14 +386,41 @@ class SmartGDLightningModule(BaseLightningModule):
             total_unique_replacements=len(self.replacement_counter)
         )
 
-    def validation_step(self, batch: pyg.data.Batch, batch_idx: int):
-        batch = batch.post_transform(self.hparams.static_transform)
+    def validation_step(self, batch: GraphDrawingData, batch_idx: int):
         # TODO: all metrics need to be evaluated
         # TODO: evaluate SPC
-        fake_layout = self.canonicalize(self(batch))
-        fake_layout = batch.struct(fake_layout, post_transform=self.hparams.dynamic_transform)
+        fake_layout = batch.transform_struct(self.canonicalize, self(batch))
         score, raw_scores = self.critic(fake_layout), self.critic.get_raw_scores()
         self.log_val_step(
             score=score.mean().item(),
             **{k: v.mean().item() for k, v in raw_scores.items()}
         )
+
+    def test_step(self, batch: GraphDrawingData, batch_idx: int) -> dict:
+        # TODO: use mean metric
+        scores = {}
+        fake_layout = batch.transform_struct(self.canonicalize, self(batch))
+        scores["fake"] = self.critic(fake_layout)
+        for method, layout_store in self.benchmark_layout_stores.items():
+            layout = batch.make_struct(layout_store)
+            layout = batch.transform_struct(self.canonicalize, layout)
+            scores[method] = self.critic(layout)
+        return scores
+
+    def test_epoch_end(self, outputs: list[dict]):
+        scores_list = defaultdict(list)
+        for scores in outputs:
+            for method, score in scores.items():
+                scores_list[method].append(score)
+        scores = {
+            method: torch.cat(score_list, dim=0)
+            for method, score_list in scores_list.items()
+        }
+        self.evaluations = {
+            method: (
+                score.mean().item(), score.std().item(),
+                (spc := self.spc(scores["fake"], score)).mean().item(), spc.std().item()
+            )
+            for method, score in scores.items()
+        }
+

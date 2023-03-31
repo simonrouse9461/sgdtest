@@ -4,6 +4,7 @@ from .transforms import (
     CreateEdgePairs,
     ComputeShortestPath,
     Delaunay,
+    GeneratePermutationEdges,
     GenerateRandomLayout,
     BatchAppendColumn,
     PopulateGraphAttrs,
@@ -32,14 +33,14 @@ class BaseGraphDrawingData(Data):
     class Field:
         stage: str
         transform: T.BaseTransform
+        optional: bool = False
 
     # Inputs
     G:                         nx.Graph
 
-    # Initialization
-    perm_index:                Tensor
-
-    # After pre_transform (Storage Footprint -- Saved to disk)
+    # pre_transform (Storage Footprint -- Saved to disk)
+    perm_index:                Tensor = Field(stage="pre_transform",
+                                              transform=GeneratePermutationEdges(attr_name="perm_index"))
     edge_metaindex:            Tensor = Field(stage="pre_transform",
                                               transform=AddAdjacencyInfo(attr_name="edge_metaindex"))
     apsp_attr:                 Tensor = Field(stage="pre_transform",
@@ -57,27 +58,35 @@ class BaseGraphDrawingData(Data):
                                                   attr_name="laplacian_eigenvector_pe"
                                               ))
 
-    # After transform (Memory Footprint -- Generated everytime when being loaded to memory)
-    name:                      str = Field(stage="transform", transform=PopulateGraphAttrs())
-    dataset:                   str = Field(stage="transform", transform=PopulateGraphAttrs())
-    n:                         Tensor = Field(stage="transform", transform=PopulateGraphAttrs())
-    m:                         Tensor = Field(stage="transform", transform=PopulateGraphAttrs())
-    aggr_metaindex:            Tensor = Field(stage="transform",
-                                              transform=SampleAggregationEdges(attr_name="aggr_metaindex"))
-
-    # After post_transform (Memory/CPU Footprint -- Generated everytime when needed)
-    # TODO: raise exception if field is None, then catch the exception and perform corresponding transform
-    pos:                       OptTensor = Field(stage="post_transform", transform=GenerateRandomLayout())
-    face:                      OptTensor = Field(stage="post_transform", transform=Delaunay())
-    edge_pair_metaindex:       OptTensor = Field(stage="post_transform",
+    # static_transform (Memory Footprint -- Generated everytime when dataset being loaded to memory)
+    name:                      str = Field(stage="static_transform",
+                                           transform=(populate_graph_attrs := PopulateGraphAttrs()))
+    dataset:                   str = Field(stage="static_transform", transform=populate_graph_attrs)
+    n:                         Tensor = Field(stage="static_transform", transform=populate_graph_attrs)
+    m:                         Tensor = Field(stage="static_transform", transform=populate_graph_attrs)
+    edge_pair_metaindex:       OptTensor = Field(stage="static_transform",
                                                  transform=CreateEdgePairs(
                                                      edge_metaindex_name="edge_metaindex",
                                                      attr_name="edge_pair_metaindex"
-                                                 ))
-    gabriel_index:             OptTensor = Field(stage="post_transform",
-                                                 transform=GabrielGraph(attr_name="gabriel_index"))
-    rng_index:                 OptTensor = Field(stage="post_transform",
-                                                 transform=RandomNeighborhoodGraph(attr_name="rng_index"))
+                                                 ),
+                                                 optional=True)
+
+    # transform (Memory/CPU Footprint -- Generated everytime when batch is sampled from the dataset)
+    aggr_metaindex:            Tensor = Field(stage="transform",
+                                              transform=SampleAggregationEdges(attr_name="aggr_metaindex"))
+    pos:                       OptTensor = Field(stage="transform", transform=GenerateRandomLayout())
+
+    # dynamic_transform (Memory/CPU Footprint -- Generated everytime as needed)
+    # TODO: raise exception if field is None, then catch the exception and perform corresponding transform
+    face:                      OptTensor = Field(stage="dynamic_transform",
+                                                 transform=Delaunay(),
+                                                 optional=True)
+    gabriel_index:             OptTensor = Field(stage="dynamic_transform",
+                                                 transform=GabrielGraph(attr_name="gabriel_index"),
+                                                 optional=True)
+    rng_index:                 OptTensor = Field(stage="dynamic_transform",
+                                                 transform=RandomNeighborhoodGraph(attr_name="rng_index"),
+                                                 optional=True)
 
     # Dynamic (CPU/GPU Footprint -- Generated on the fly when being accessed)
     # ------------------------------------ pre_transform
@@ -86,12 +95,12 @@ class BaseGraphDrawingData(Data):
     edge_index:                Tensor
     edge_attr:                 Tensor
     edge_weight:               Tensor
+    # --------------------------------- static_transform
+    edge_pair_index:           OptTensor
     # ---------------------------------------- transform
     aggr_index:                Tensor
     aggr_attr:                 Tensor
     aggr_weight:               Tensor
-    # ----------------------------------- post_transform
-    edge_pair_index:           OptTensor
 
     @property
     def x(self) -> Tensor:
@@ -122,6 +131,16 @@ class BaseGraphDrawingData(Data):
         return self.perm_index.device
 
     @classmethod
+    def get_optional_fields(cls):
+        if not hasattr(cls, "_optional_fields"):
+            cls._optional_fields = []
+        return cls._optional_fields
+
+    @classmethod
+    def set_optional_fields(cls, fields: Optional[list] = None):
+        cls._optional_fields = [] if fields is None else fields
+
+    @classmethod
     def field_annotations(cls) -> dict[str, type]:
         return BaseGraphDrawingData.__annotations__
 
@@ -134,6 +153,8 @@ class BaseGraphDrawingData(Data):
                 field_info = getattr(cls, field_name)
                 if not isinstance(field_info, cls.Field):
                     continue
+                if field_info.optional and field_name not in cls.get_optional_fields():
+                    continue
                 if stage in [None, field_info.stage]:
                     yield field_name, field_info
         return dict(generate_fields())
@@ -143,15 +164,15 @@ class BaseGraphDrawingData(Data):
     def new(cls, G: nx.Graph) -> Optional[Self]:
         data = cls(G=G)
         if data.pre_filter():
-            return data.pre_transform().transform()
+            return data.pre_transform().static_transform().transform().dynamic_transform()
         return None
 
     # noinspection PyPep8Naming
     def __init__(self, G: Optional[nx.Graph] = None):
         super().__init__(G=G)
         if G is not None:  # Allow empty GraphDrawingData when constructing Batch
-            self.num_nodes = n = self.G.number_of_nodes()
-            self.perm_index = torch.tensor(np.array(list(permutations(range(n), 2)))).T
+            NormalizeGraph()(self)
+            self.num_nodes = self.G.number_of_nodes()
 
     def __inc__(self, key: str, value: Any, *args, **kwargs) -> Any:
         if "metaindex" in key:
@@ -183,39 +204,29 @@ class BaseGraphDrawingData(Data):
 
     def pre_filter(self) -> bool:
         assert not isinstance(self, Batch)
-        return nx.is_connected(self.G)
+        return nx.is_connected(self.G.to_undirected())
+
+    def _transforms(self, stage: str):
+        transforms = []
+        for field_info in self.fields(stage=stage).values():
+            if field_info.transform not in transforms:
+                transforms.append(field_info.transform)
+        return transforms
 
     def pre_transform(self) -> Self:
         assert not isinstance(self, Batch)
-        return T.Compose([
-            NormalizeGraph(),
-            AddAdjacencyInfo(attr_name="edge_metaindex"),
-            ComputeShortestPath(
-                cutoff=None,
-                attr_name="apsp_attr",
-                weight_name="perm_weight"
-            ),
-            T.AddLaplacianEigenvectorPE(
-                k=3,
-                is_undirected=True,
-                attr_name="laplacian_eigenvector_pe"
-            )
-        ])(self)
+        return T.Compose(self._transforms(stage="pre_transform"))(self)
+
+    def static_transform(self) -> Self:
+        assert not isinstance(self, Batch)
+        return T.Compose(self._transforms(stage="static_transform"))(self)
 
     def transform(self) -> Self:
         assert not isinstance(self, Batch)
-        return T.Compose([
-            PopulateGraphAttrs(),
-            SampleAggregationEdges(attr_name="aggr_metaindex")
-        ])(self)
+        return T.Compose(self._transforms(stage="transform"))(self)
 
-    def post_transform(self, field: Union[str, Iterable[str], None] = None) -> Self:
-        field_dict = self.fields(stage="post_transform")
-        if field is None:
-            field = field_dict.keys()
-        if isinstance(field, str):
-            field = [field]
-        transforms = T.Compose([field_dict[f].transform for f in field])
+    def dynamic_transform(self) -> Self:
+        transforms = T.Compose(self._transforms(stage="dynamic_transform"))
         if isinstance(self, Batch):
             return Batch.from_data_list(list(map(transforms, self.to_data_list())))
         return transforms(self)

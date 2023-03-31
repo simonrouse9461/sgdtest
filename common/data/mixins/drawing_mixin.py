@@ -8,4 +8,4 @@ class DrawingMixin(ABC):
     G: nx.Graph
 
     def draw(self):
-        nx.draw(self.G)
+        nx.draw(self.G, pos={i: self.pos[i] for i in range(len(self.pos))})
