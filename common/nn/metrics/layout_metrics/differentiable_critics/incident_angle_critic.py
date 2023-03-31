@@ -45,7 +45,7 @@ class IncidentAngle(BaseLayoutMetric):
         counts = torch.unique(u, return_counts=True)[-1]
         # get start index for each u
         last_idx = counts.cumsum(0) - 1
-        roll_val = torch.arange(len(u))
+        roll_val = torch.arange(len(u)).to(last_idx)
         roll_val[last_idx] -= len(u)
         roll_perm = self.sparse_sort(roll_val, u)[-1]
         rolled_v = sorted_v[roll_perm]
