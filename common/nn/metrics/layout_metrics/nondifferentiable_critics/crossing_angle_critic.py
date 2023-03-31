@@ -30,7 +30,7 @@ class CrossingAngleCritic(BaseLayoutMetric):
             edge_1_end_pos=layout.pos[e1],
             edge_2_start_pos=layout.pos[s2],
             edge_2_end_pos=layout.pos[e2]
-        ).float()
+        )
 
         r, s = layout.pos[e1] - layout.pos[s1], layout.pos[e2] - layout.pos[s2]
         radians = (F.normalize(r, dim=1) * F.normalize(s, dim=1)).sum(dim=1).abs().asin()

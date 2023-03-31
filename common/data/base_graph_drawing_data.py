@@ -64,17 +64,17 @@ class BaseGraphDrawingData(Data):
     dataset:                   str = Field(stage="static_transform", transform=populate_graph_attrs)
     n:                         Tensor = Field(stage="static_transform", transform=populate_graph_attrs)
     m:                         Tensor = Field(stage="static_transform", transform=populate_graph_attrs)
-    edge_pair_metaindex:       OptTensor = Field(stage="static_transform",
-                                                 transform=CreateEdgePairs(
-                                                     edge_metaindex_name="edge_metaindex",
-                                                     attr_name="edge_pair_metaindex"
-                                                 ),
-                                                 optional=True)
 
     # transform (Memory/CPU Footprint -- Generated everytime when batch is sampled from the dataset)
     aggr_metaindex:            Tensor = Field(stage="transform",
                                               transform=SampleAggregationEdges(attr_name="aggr_metaindex"))
     pos:                       OptTensor = Field(stage="transform", transform=GenerateRandomLayout())
+    edge_pair_metaindex:       OptTensor = Field(stage="transform",
+                                                 transform=CreateEdgePairs(
+                                                     edge_metaindex_name="edge_metaindex",
+                                                     attr_name="edge_pair_metaindex"
+                                                 ),
+                                                 optional=True)
 
     # dynamic_transform (Memory/CPU Footprint -- Generated everytime as needed)
     # TODO: raise exception if field is None, then catch the exception and perform corresponding transform
@@ -95,8 +95,7 @@ class BaseGraphDrawingData(Data):
     edge_index:                Tensor
     edge_attr:                 Tensor
     edge_weight:               Tensor
-    # --------------------------------- static_transform
-    edge_pair_index:           OptTensor
+    edge_pair_index:           Tensor
     # ---------------------------------------- transform
     aggr_index:                Tensor
     aggr_attr:                 Tensor

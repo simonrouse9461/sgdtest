@@ -41,7 +41,7 @@ class RomeDataset(pyg.data.InMemoryDataset):
             pre_filter=self.datatype.pre_filter
         )
         self.data, self.slices = torch.load(self.processed_paths[0])
-        data_list = map(datatype.static_transform, self)
+        data_list = map(datatype.static_transform, tqdm(self, desc=f"Transform graphs"))
         self.data, self.slices = self.collate(list(data_list))
 
     def _parse_metadata(self, logfile: str) -> Iterator[str]:

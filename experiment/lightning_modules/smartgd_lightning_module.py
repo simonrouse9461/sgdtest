@@ -40,9 +40,8 @@ class SmartGDLightningModule(BaseLightningModule):
         generator_spec:             Union[Optional[str], tuple[Optional[str], Optional[str]]] = None
         discriminator_spec:         Union[Optional[str], tuple[Optional[str], Optional[str]]] = None
         criteria:                   Union[str, dict[str, float]] = "stress_only"
-        optional_data_fields:       list[str] = field(default_factory=list)
         train_optional_data_fields: list[str] = field(default_factory=list)
-        val_optional_data_fields:   list[str] = field(default_factory=list)
+        eval_optional_data_fields:  list[str] = field(default_factory=list)
         init_layout_method:         Optional[str] = "pmds"
         real_layout_candidates:     Union[str, list[str]] = field(default_factory=lambda: [
             "neato", "sfdp", "spring", "spectral", "kamada_kawai", "fa2", "pmds"
@@ -119,9 +118,8 @@ class SmartGDLightningModule(BaseLightningModule):
                 )
             ),
             criteria_weights=config.criteria,
-            optional_data_fields=config.optional_data_fields,
             train_optional_data_fields=config.train_optional_data_fields,
-            val_optional_data_fields=config.val_optional_data_fields,
+            eval_optional_data_fields=config.eval_optional_data_fields,
             init_layout_method=config.init_layout_method,
             real_layout_candidates=config.real_layout_candidates,
             benchmark_layout_methods=config.benchmark_layout_methods,
@@ -193,7 +191,6 @@ class SmartGDLightningModule(BaseLightningModule):
             ))
 
     def setup(self, stage: str) -> None:
-        GraphDrawingData.set_optional_fields(self.hparams.optional_data_fields)
         super().setup(stage)
         if not self.generator:
             self.load_generator(self.hparams.generator)
@@ -240,7 +237,10 @@ class SmartGDLightningModule(BaseLightningModule):
         GraphDrawingData.set_optional_fields(self.hparams.train_optional_data_fields)
 
     def on_validation_start(self) -> None:
-        GraphDrawingData.set_optional_fields(self.hparams.val_optional_data_fields)
+        GraphDrawingData.set_optional_fields(self.hparams.eval_optional_data_fields)
+
+    def on_test_start(self) -> None:
+        GraphDrawingData.set_optional_fields(self.hparams.eval_optional_data_fields)
 
     def forward(self, batch: GraphDrawingData):
         layout = batch.make_struct(self.init_layout_store)
