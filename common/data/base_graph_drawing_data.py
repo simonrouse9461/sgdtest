@@ -35,12 +35,12 @@ class BaseGraphDrawingData(Data):
         transform: T.BaseTransform
         optional: bool = False
 
-    # Inputs
-    G:                         nx.Graph
+    # Initialize
+    G:                         nx.Graph = Field(stage="init", transform=NormalizeGraph())
+    perm_index:                Tensor = Field(stage="init",
+                                              transform=GeneratePermutationEdges(attr_name="perm_index"))
 
     # pre_transform (Storage Footprint -- Saved to disk)
-    perm_index:                Tensor = Field(stage="pre_transform",
-                                              transform=GeneratePermutationEdges(attr_name="perm_index"))
     edge_metaindex:            Tensor = Field(stage="pre_transform",
                                               transform=AddAdjacencyInfo(attr_name="edge_metaindex"))
     apsp_attr:                 Tensor = Field(stage="pre_transform",
@@ -171,8 +171,8 @@ class BaseGraphDrawingData(Data):
     def __init__(self, G: Optional[nx.Graph] = None):
         super().__init__(G=G)
         if G is not None:  # Allow empty GraphDrawingData when constructing Batch
-            NormalizeGraph()(self)
             self.num_nodes = self.G.number_of_nodes()
+            T.Compose(self._transforms(stage="init"))(self)
 
     def __inc__(self, key: str, value: Any, *args, **kwargs) -> Any:
         if "metaindex" in key:

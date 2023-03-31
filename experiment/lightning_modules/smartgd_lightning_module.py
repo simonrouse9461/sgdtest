@@ -40,10 +40,15 @@ class SmartGDLightningModule(BaseLightningModule):
         generator_spec:             Union[Optional[str], tuple[Optional[str], Optional[str]]] = None
         discriminator_spec:         Union[Optional[str], tuple[Optional[str], Optional[str]]] = None
         criteria:                   Union[str, dict[str, float]] = "stress_only"
-        optional_data_fields:       Union[list[str], None] = None
+        optional_data_fields:       list[str] = field(default_factory=list)
+        train_optional_data_fields: list[str] = field(default_factory=list)
+        val_optional_data_fields:   list[str] = field(default_factory=list)
         init_layout_method:         Optional[str] = "pmds"
         real_layout_candidates:     Union[str, list[str]] = field(default_factory=lambda: [
             "neato", "sfdp", "spring", "spectral", "kamada_kawai", "fa2", "pmds"
+        ])
+        benchmark_layout_methods:   list[str] = field(default_factory=lambda: [
+            "neato", "sfdp", "spring", "spectral", "kamada_kawai", "fa2", "pmds", "sgd2"
         ])
         self_challenging:           bool = True
         alternating_mode:           str = "step"
@@ -61,7 +66,6 @@ class SmartGDLightningModule(BaseLightningModule):
         self.discriminator: Optional[nn.Module] = None
 
         # Data
-        GraphDrawingData.optional_fields = self.hparams.optional_data_fields
         self.init_layout_store: Optional[LayoutDict] = None
         self.real_layout_store: Optional[LayoutDict] = None
         self.fake_layout_store: LayoutDict = {}
@@ -70,6 +74,7 @@ class SmartGDLightningModule(BaseLightningModule):
 
         # Functions
         self.critic: Optional[CompositeCritic] = None
+        self.val_metric: CompositeCritic = CompositeCritic.from_preset("human_preference")
         self.adversarial_criterion: BaseAdverserialCriterion = RGANCriterion()
         self.canonicalize: BaseTransformation = Compose(
             Center(),
@@ -88,8 +93,6 @@ class SmartGDLightningModule(BaseLightningModule):
             config.discriminator_spec = (config.discriminator_spec, None)
         if isinstance(config.real_layout_candidates, str):
             config.real_layout_candidates = [config.real_layout_candidates]
-        if config.optional_data_fields is None:
-            config.optional_data_fields = []
         # TODO: load hparams directly from hparams.yml for existing experiments
         return dict(
             dataset_name=config.dataset_name,
@@ -117,8 +120,11 @@ class SmartGDLightningModule(BaseLightningModule):
             ),
             criteria_weights=config.criteria,
             optional_data_fields=config.optional_data_fields,
+            train_optional_data_fields=config.train_optional_data_fields,
+            val_optional_data_fields=config.val_optional_data_fields,
             init_layout_method=config.init_layout_method,
             real_layout_candidates=config.real_layout_candidates,
+            benchmark_layout_methods=config.benchmark_layout_methods,
             self_challenging=config.self_challenging,
             alternating_mode=config.alternating_mode,
             generator_frequency=config.generator_frequency,
@@ -131,11 +137,8 @@ class SmartGDLightningModule(BaseLightningModule):
     def on_prepare_data(self, dataset) -> None:
         if len(self.hparams.real_layout_candidates) <= 1:
             return
-        layout_params = dict(
-            candidates=self.hparams.real_layout_candidates,
-            criteria=self.hparams.criteria_weights
-        )
-        if self.layout_syncer.exists(name="ranked", params=layout_params):
+        layout_params = self.generate_real_layout_params()
+        if self.layout_syncer.exists(**layout_params):
             return
         critic = CompositeCritic(
             criteria_weights=self.hparams.criteria_weights,
@@ -158,13 +161,12 @@ class SmartGDLightningModule(BaseLightningModule):
             best_layout = list(layout_stores)[scores.argmin()]
             real_layout_store[data.name] = layout_stores[best_layout][data.name]
             real_layout_metadata[data.name] = dict(method=best_layout)
-        if not self.layout_syncer.exists(name="ranked", params=layout_params):
+        if not self.layout_syncer.exists(**layout_params):
             print("Uploading real layouts...")
             self.layout_syncer.save(
                 real_layout_store,
-                name="ranked",
                 metadata=real_layout_metadata,
-                params=layout_params
+                **layout_params
             )
 
     def load_generator(self, generator_config: dict[str, Any]):
@@ -179,7 +181,19 @@ class SmartGDLightningModule(BaseLightningModule):
             version=discriminator_config["meta"]["md5_digest"],
         ))
 
+    def generate_real_layout_params(self):
+        if len(self.hparams.real_layout_candidates) == 0:
+            return dict(name="random")
+        elif len(self.hparams.real_layout_candidates) == 1:
+            return dict(name=self.hparams.real_layout_candidates[0])
+        else:
+            return dict(name="ranked", params=dict(
+                candidates=self.hparams.real_layout_candidates,
+                criteria=self.hparams.criteria_weights
+            ))
+
     def setup(self, stage: str) -> None:
+        GraphDrawingData.set_optional_fields(self.hparams.optional_data_fields)
         super().setup(stage)
         if not self.generator:
             self.load_generator(self.hparams.generator)
@@ -189,23 +203,13 @@ class SmartGDLightningModule(BaseLightningModule):
             criteria_weights=self.hparams.criteria_weights,
             batch_reduce=None
         )
-        if len(self.hparams.real_layout_candidates) == 0:
-            raise NotImplementedError  # TODO: use random layout
-        if len(self.hparams.real_layout_candidates) == 1:
-            assert self.layout_syncer.exists(name=self.hparams.real_layout_candidates[0]), "Layout not found!"
-            self.real_layout_store = self.layout_syncer.load(name=self.hparams.real_layout_candidates[0])
-        else:
-            layout_params = dict(
-                candidates=self.hparams.real_layout_candidates,
-                criteria=self.hparams.criteria_weights
-            )
-            assert self.layout_syncer.exists(name="ranked", params=layout_params), "Layout not found!"
-            self.real_layout_store = self.layout_syncer.load(name="ranked", params=layout_params)
+        real_layout_params = self.generate_real_layout_params()
+        assert self.layout_syncer.exists(**real_layout_params), "Layout not found!"
+        self.real_layout_store = self.layout_syncer.load(**real_layout_params)
         if self.hparams.init_layout_method:
             self.init_layout_store = self.layout_syncer.load(name=self.hparams.init_layout_method)
         else:
-            template_layout_store = self.layout_syncer.load(name="random")
-            self.init_layout_store = RandomLayoutStore(template=template_layout_store)
+            self.init_layout_store = RandomLayoutStore(template=self.layout_syncer.load(name="random"))
         self.replacement_counter = defaultdict(int)
         if stage == "test":
             self.setup_test()
@@ -213,7 +217,7 @@ class SmartGDLightningModule(BaseLightningModule):
     def setup_test(self) -> None:
         self.benchmark_layout_stores = {
             method: self.layout_syncer.load(name=method)
-            for method in self.hparams.real_layout_candidates
+            for method in self.hparams.benchmark_layout_methods
         }
         self.benchmark_layout_stores["real"] = self.layout_syncer.load(
             name="ranked", params=dict(
@@ -231,6 +235,12 @@ class SmartGDLightningModule(BaseLightningModule):
     def on_save_checkpoint(self, checkpoint: dict[str, Any]):
         checkpoint["real_layout_store"] = self.real_layout_store
         checkpoint["replacement_counter"] = self.replacement_counter
+
+    def on_train_start(self) -> None:
+        GraphDrawingData.set_optional_fields(self.hparams.train_optional_data_fields)
+
+    def on_validation_start(self) -> None:
+        GraphDrawingData.set_optional_fields(self.hparams.val_optional_data_fields)
 
     def forward(self, batch: GraphDrawingData):
         layout = batch.make_struct(self.init_layout_store)
@@ -387,13 +397,22 @@ class SmartGDLightningModule(BaseLightningModule):
         )
 
     def validation_step(self, batch: GraphDrawingData, batch_idx: int):
-        # TODO: all metrics need to be evaluated
-        # TODO: evaluate SPC
+        real_layout = batch.make_struct(self.layout_syncer.load(**self.generate_real_layout_params()))
         fake_layout = batch.transform_struct(self.canonicalize, self(batch))
-        score, raw_scores = self.critic(fake_layout), self.critic.get_raw_scores()
+        score = self.critic(fake_layout)
+        human_score, raw_scores = self.val_metric(fake_layout), self.val_metric.get_raw_scores()
+        real_score = self.critic(real_layout)
+        real_human_score, real_raw_scores = self.val_metric(real_layout), self.val_metric.get_raw_scores()
+        score_spc = self.spc(score, real_score)
+        human_score_spc = self.spc(human_score, real_human_score)
+        raw_scores_spc = {name: self.spc(raw_scores[name], real_raw_scores[name]) for name in raw_scores}
         self.log_val_step(
             score=score.mean().item(),
-            **{k: v.mean().item() for k, v in raw_scores.items()}
+            score_spc=score_spc.mean().item(),
+            human_preference_score=human_score.mean().item(),
+            human_preference_score_spc=human_score_spc.mean().item(),
+            **{k: v.mean().item() for k, v in raw_scores.items()},
+            **{k + "_spc": v.mean().item() for k, v in raw_scores_spc.items()},
         )
 
     def test_step(self, batch: GraphDrawingData, batch_idx: int) -> dict:
