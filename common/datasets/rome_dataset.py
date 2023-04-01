@@ -85,7 +85,7 @@ class RomeDataset(pyg.data.InMemoryDataset):
         else:
             G_dict = {G.graph["name"]: G for G in G_list}
             G_list = [G_dict[name] for name in self.index]
-        data_list = map(self.datatype, G_list)
+        data_list = map(self.datatype, tqdm(G_list, desc=f"Pre-transform graphs"))
         data_list = filter(self.pre_filter, data_list)
         data_list = map(self.pre_transform, data_list)
         data, slices = self.collate(list(data_list))

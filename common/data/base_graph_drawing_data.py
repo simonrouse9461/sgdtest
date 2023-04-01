@@ -1,7 +1,6 @@
 from .transforms import (
     NormalizeGraph,
     AddAdjacencyInfo,
-    CreateEdgePairs,
     ComputeShortestPath,
     Delaunay,
     GeneratePermutationEdges,
@@ -51,12 +50,6 @@ class BaseGraphDrawingData(Data):
                                               )))
     perm_weight:               Tensor = Field(stage="pre_transform",
                                               transform=compute_shortest_path)
-    laplacian_eigenvector_pe:  Tensor = Field(stage="pre_transform",
-                                              transform=T.AddLaplacianEigenvectorPE(
-                                                  k=3,
-                                                  is_undirected=True,
-                                                  attr_name="laplacian_eigenvector_pe"
-                                              ))
 
     # static_transform (Memory Footprint -- Generated everytime when dataset being loaded to memory)
     name:                      str = Field(stage="static_transform",
@@ -64,17 +57,17 @@ class BaseGraphDrawingData(Data):
     dataset:                   str = Field(stage="static_transform", transform=populate_graph_attrs)
     n:                         Tensor = Field(stage="static_transform", transform=populate_graph_attrs)
     m:                         Tensor = Field(stage="static_transform", transform=populate_graph_attrs)
+    laplacian_eigenvector_pe:  Tensor = Field(stage="static_transform",
+                                              transform=T.AddLaplacianEigenvectorPE(
+                                                  k=3,
+                                                  is_undirected=True,
+                                                  attr_name="laplacian_eigenvector_pe"
+                                              ))
 
     # transform (Memory/CPU Footprint -- Generated everytime when batch is sampled from the dataset)
     aggr_metaindex:            Tensor = Field(stage="transform",
                                               transform=SampleAggregationEdges(attr_name="aggr_metaindex"))
     pos:                       OptTensor = Field(stage="transform", transform=GenerateRandomLayout())
-    edge_pair_metaindex:       OptTensor = Field(stage="transform",
-                                                 transform=CreateEdgePairs(
-                                                     edge_metaindex_name="edge_metaindex",
-                                                     attr_name="edge_pair_metaindex"
-                                                 ),
-                                                 optional=True)
 
     # dynamic_transform (Memory/CPU Footprint -- Generated everytime as needed)
     # TODO: raise exception if field is None, then catch the exception and perform corresponding transform
@@ -95,6 +88,7 @@ class BaseGraphDrawingData(Data):
     edge_index:                Tensor
     edge_attr:                 Tensor
     edge_weight:               Tensor
+    edge_pair_metaindex:       Tensor
     edge_pair_index:           Tensor
     # ---------------------------------------- transform
     aggr_index:                Tensor
@@ -112,6 +106,11 @@ class BaseGraphDrawingData(Data):
     def perm_attr(self) -> Tensor:
         assert self.apsp_attr is not None
         return torch.cat([self.apsp_attr.unsqueeze(1)], dim=1).float()
+
+    @property
+    def edge_pair_metaindex(self) -> Tensor:
+        assert self.edge_metaindex is not None
+        return torch.combinations(self.edge_metaindex).T
 
     @property
     def edge_index(self) -> Tensor:
