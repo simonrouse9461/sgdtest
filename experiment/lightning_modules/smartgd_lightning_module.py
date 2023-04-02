@@ -47,7 +47,13 @@ class SmartGDLightningModule(BaseLightningModule):
             "neato", "sfdp", "spring", "spectral", "kamada_kawai", "fa2", "pmds"
         ])
         benchmark_layout_methods:   list[str] = field(default_factory=lambda: [
-            "neato", "sfdp", "spring", "spectral", "kamada_kawai", "fa2", "pmds", "sgd2"
+            "neato", "dot", "sfdp", "twopi", "circo", "spring", "spectral",
+            "kamada_kawai", "fa2", "pmds", "sgd2", "deepgd", "fmmm",
+            ("gd2", dict(metric="stress")),
+            ("gd2", dict(metric="xing", split="test")),
+            ("gd2", dict(metric="xangle", split="test")),
+            ("gd2", dict(metric="stress+xing", split="test")),
+            ("gd2", dict(metric="stress+xangle", split="test"))
         ])
         self_challenging:           bool = True
         alternating_mode:           str = "step"
@@ -122,7 +128,8 @@ class SmartGDLightningModule(BaseLightningModule):
             eval_optional_data_fields=config.eval_optional_data_fields,
             init_layout_method=config.init_layout_method,
             real_layout_candidates=config.real_layout_candidates,
-            benchmark_layout_methods=config.benchmark_layout_methods,
+            benchmark_layout_methods=[method if isinstance(method, tuple) else (method, None)
+                                      for method in config.benchmark_layout_methods],
             self_challenging=config.self_challenging,
             alternating_mode=config.alternating_mode,
             generator_frequency=config.generator_frequency,
@@ -213,15 +220,11 @@ class SmartGDLightningModule(BaseLightningModule):
 
     def setup_test(self) -> None:
         self.benchmark_layout_stores = {
-            method: self.layout_syncer.load(name=method)
+            method[0] if method[1] is None else f"{method[0]}:{method[1]['metric']}":
+                self.layout_syncer.load(name=method[0], params=method[1])
             for method in self.hparams.benchmark_layout_methods
         }
-        self.benchmark_layout_stores["real"] = self.layout_syncer.load(
-            name="ranked", params=dict(
-                candidates=self.hparams.real_layout_candidates,
-                criteria=self.hparams.criteria_weights
-            )
-        )
+        self.benchmark_layout_stores["real"] = self.layout_syncer.load(**self.generate_real_layout_params())
 
     def on_load_checkpoint(self, checkpoint: dict[str, Any]):
         self.load_generator(checkpoint["hyper_parameters"]["generator"])
