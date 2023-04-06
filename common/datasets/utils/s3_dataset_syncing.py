@@ -114,8 +114,7 @@ def _initialize_s3_client():
 
 def _download_from_s3(job):
     bucket, key, file = job
-    if not os.path.exists(os.path.dirname(file)):
-        os.makedirs(os.path.dirname(file))
+    os.makedirs(os.path.dirname(file), exist_ok=True)
     if not os.path.exists(file):
         _s3_client.Bucket(bucket).download_file(Key=key, Filename=file)
 
