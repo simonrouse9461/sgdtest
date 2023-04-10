@@ -40,7 +40,7 @@ class SmartGDLightningModule(BaseLightningModule):
         generator_spec:             Union[Optional[str], tuple[Optional[str], Optional[str]]] = None
         discriminator_spec:         Union[Optional[str], tuple[Optional[str], Optional[str]]] = None
         criteria:                   Union[str, dict[str, float]] = "stress_only"
-        train_optional_data_fields: list[str] = field(default_factory=list)
+        optional_data_fields:       list[str] = field(default_factory=list)
         eval_optional_data_fields:  list[str] = field(default_factory=list)
         init_layout_method:         Optional[str] = "pmds"
         real_layout_candidates:     Union[str, list[str]] = field(default_factory=lambda: [
@@ -124,7 +124,7 @@ class SmartGDLightningModule(BaseLightningModule):
                 )
             ),
             criteria_weights=config.criteria,
-            train_optional_data_fields=config.train_optional_data_fields,
+            optional_data_fields=config.optional_data_fields,
             eval_optional_data_fields=config.eval_optional_data_fields,
             init_layout_method=config.init_layout_method,
             real_layout_candidates=config.real_layout_candidates,
@@ -198,6 +198,7 @@ class SmartGDLightningModule(BaseLightningModule):
             ))
 
     def setup(self, stage: str) -> None:
+        GraphDrawingData.set_optional_fields(self.hparams.optional_data_fields)
         super().setup(stage)
         if not self.generator:
             self.load_generator(self.hparams.generator)
@@ -237,10 +238,12 @@ class SmartGDLightningModule(BaseLightningModule):
         checkpoint["replacement_counter"] = self.replacement_counter
 
     def on_train_start(self) -> None:
-        GraphDrawingData.set_optional_fields(self.hparams.train_optional_data_fields)
+        GraphDrawingData.set_optional_fields(self.hparams.optional_data_fields)
 
     def on_validation_start(self) -> None:
-        GraphDrawingData.set_optional_fields(self.hparams.eval_optional_data_fields)
+        GraphDrawingData.set_optional_fields(
+            self.hparams.optional_data_fields + self.hparams.eval_optional_data_fields
+        )
 
     def on_test_start(self) -> None:
         GraphDrawingData.set_optional_fields(self.hparams.eval_optional_data_fields)
