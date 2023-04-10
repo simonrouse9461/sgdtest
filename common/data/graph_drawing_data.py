@@ -35,6 +35,7 @@ class GraphDrawingData(BaseGraphDrawingData, DrawingMixin):
         assert self.pos is not None
         data = self.dynamic_transform()
         batch_index = data.batch if isinstance(data, Batch) else torch.zeros(data.num_nodes).long().to(data.device)
+        num_graphs = data.num_graphs if isinstance(data, Batch) else 1
         return GraphStruct(
             pos=data.pos,
             n=data.n,
@@ -43,7 +44,7 @@ class GraphDrawingData(BaseGraphDrawingData, DrawingMixin):
             batch=batch_index,
             num_nodes=data.num_nodes,
             num_edges=data.num_edges,
-            num_graphs=data.num_graphs,
+            num_graphs=num_graphs,
             perm_index=data.perm_index,
             perm_attr=data.perm_attr,
             perm_weight=data.perm_weight,

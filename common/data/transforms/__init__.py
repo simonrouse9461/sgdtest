@@ -3,6 +3,7 @@ from .compute_shortest_path import *
 from .batch_append_column import *
 from .delaunay import *
 from .gabriel_graph import *
+from .generate_edge_pairs import *
 from .generate_permutation_edges import *
 from .generate_random_layout import *
 from .normalize_graph import *

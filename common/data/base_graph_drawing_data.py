@@ -3,6 +3,7 @@ from .transforms import (
     AddAdjacencyInfo,
     ComputeShortestPath,
     Delaunay,
+    GenerateEdgePairs,
     GeneratePermutationEdges,
     GenerateRandomLayout,
     BatchAppendColumn,
@@ -57,12 +58,18 @@ class BaseGraphDrawingData(Data):
     dataset:                   str = Field(stage="static_transform", transform=populate_graph_attrs)
     n:                         Tensor = Field(stage="static_transform", transform=populate_graph_attrs)
     m:                         Tensor = Field(stage="static_transform", transform=populate_graph_attrs)
-    laplacian_eigenvector_pe:  Tensor = Field(stage="static_transform",
-                                              transform=T.AddLaplacianEigenvectorPE(
-                                                  k=3,
-                                                  is_undirected=True,
-                                                  attr_name="laplacian_eigenvector_pe"
-                                              ))
+    laplacian_eigenvector_pe:  OptTensor = Field(stage="static_transform",
+                                                 transform=T.AddLaplacianEigenvectorPE(
+                                                     k=3,
+                                                     is_undirected=True,
+                                                     attr_name="laplacian_eigenvector_pe"
+                                                 ),
+                                                 optional=True)
+    edge_pair_metaindex:       OptTensor = Field(stage="static_transform",
+                                                 transform=GenerateEdgePairs(
+                                                     attr_name="edge_pair_metaindex"
+                                                 ),
+                                                 optional=True)
 
     # transform (Memory/CPU Footprint -- Generated everytime when batch is sampled from the dataset)
     aggr_metaindex:            Tensor = Field(stage="transform",
@@ -83,12 +90,11 @@ class BaseGraphDrawingData(Data):
 
     # Dynamic (CPU/GPU Footprint -- Generated on the fly when being accessed)
     # ------------------------------------ pre_transform
-    x:                         Tensor
-    perm_attr:                 Tensor
+    x:                         OptTensor
+    perm_attr:                 OptTensor
     edge_index:                Tensor
     edge_attr:                 Tensor
     edge_weight:               Tensor
-    edge_pair_metaindex:       Tensor
     edge_pair_index:           Tensor
     # ---------------------------------------- transform
     aggr_index:                Tensor
@@ -96,21 +102,22 @@ class BaseGraphDrawingData(Data):
     aggr_weight:               Tensor
 
     @property
-    def x(self) -> Tensor:
-        assert self.laplacian_eigenvector_pe is not None
+    def x(self) -> OptTensor:
+        try:
+            assert self.laplacian_eigenvector_pe is not None
+        except AssertionError:
+            return None
         return torch.cat([
             self.laplacian_eigenvector_pe,
         ], dim=1).float()
 
     @property
-    def perm_attr(self) -> Tensor:
-        assert self.apsp_attr is not None
+    def perm_attr(self) -> OptTensor:
+        try:
+            assert self.apsp_attr is not None
+        except AssertionError:
+            return None
         return torch.cat([self.apsp_attr.unsqueeze(1)], dim=1).float()
-
-    @property
-    def edge_pair_metaindex(self) -> Tensor:
-        assert self.edge_metaindex is not None
-        return torch.combinations(self.edge_metaindex).T
 
     @property
     def edge_index(self) -> Tensor:

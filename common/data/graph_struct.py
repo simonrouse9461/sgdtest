@@ -110,7 +110,7 @@ class GraphStruct:
     @jit.unused
     def __repr__(self) -> str:
         shape_dict = {
-            k.name: list(getattr(self, k.name).shape)
+            k.name: list(val.shape) if isinstance(val := getattr(self, k.name), Tensor) else val
             for k in fields(self)
             if getattr(self, k.name) is not None
         }

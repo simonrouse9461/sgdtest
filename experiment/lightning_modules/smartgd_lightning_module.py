@@ -53,7 +53,7 @@ class SmartGDLightningModule(BaseLightningModule):
             ("gd2", dict(metric="xing", split="test")),
             ("gd2", dict(metric="xangle", split="test")),
             ("gd2", dict(metric="stress+xing", split="test")),
-            ("gd2", dict(metric="stress+xangle", split="test"))
+            # ("gd2", dict(metric="stress+xangle", split="test"))
         ])
         self_challenging:           bool = True
         alternating_mode:           str = "step"
