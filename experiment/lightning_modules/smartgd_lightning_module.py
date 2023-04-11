@@ -55,7 +55,7 @@ class SmartGDLightningModule(BaseLightningModule):
             ("gd2", dict(metric="stress+xing", split="test")),
             # ("gd2", dict(metric="stress+xangle", split="test"))
         ])
-        train_by_critic:     bool = True
+        learn_from_critic:          bool = True
         replace_by_critic:          bool = True
         alternating_mode:           str = "step"
         generator_frequency:        Union[int, float] = 1
@@ -131,7 +131,7 @@ class SmartGDLightningModule(BaseLightningModule):
             real_layout_candidates=config.real_layout_candidates,
             benchmark_layout_methods=[method if isinstance(method, tuple) else (method, None)
                                       for method in config.benchmark_layout_methods],
-            train_by_critic=config.train_by_critic,
+            learn_from_critic=config.learn_from_critic,
             replace_by_critic=config.replace_by_critic,
             alternating_mode=config.alternating_mode,
             generator_frequency=config.generator_frequency,
@@ -333,7 +333,7 @@ class SmartGDLightningModule(BaseLightningModule):
 
         positive, negative = real_score < fake_score, real_score > fake_score
 
-        if self.hparams.train_by_critic:
+        if self.hparams.learn_from_critic:
             good_pred = torch.cat([real_pred[positive], fake_pred[negative]])
             bad_pred = torch.cat([fake_pred[positive], real_pred[negative]])
             discriminator_loss = self.adversarial_criterion(encourage=good_pred, discourage=bad_pred)
