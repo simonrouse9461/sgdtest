@@ -55,7 +55,8 @@ class SmartGDLightningModule(BaseLightningModule):
             ("gd2", dict(metric="stress+xing", split="test")),
             # ("gd2", dict(metric="stress+xangle", split="test"))
         ])
-        self_challenging:           bool = True
+        discriminate_by_critic:     bool = True
+        replace_by_critic:          bool = True
         alternating_mode:           str = "step"
         generator_frequency:        Union[int, float] = 1
         discriminator_frequency:    Union[int, float] = 1
@@ -79,7 +80,7 @@ class SmartGDLightningModule(BaseLightningModule):
 
         # Functions
         self.critic: Optional[CompositeCritic] = None
-        self.val_metric: CompositeCritic = CompositeCritic.from_preset("human_preference")
+        self.eval_metric: CompositeCritic = CompositeCritic.from_preset("human_preference")
         self.adversarial_criterion: BaseAdverserialCriterion = RGANCriterion()
         self.canonicalize: BaseTransformation = Compose(
             Center(),
@@ -130,7 +131,8 @@ class SmartGDLightningModule(BaseLightningModule):
             real_layout_candidates=config.real_layout_candidates,
             benchmark_layout_methods=[method if isinstance(method, tuple) else (method, None)
                                       for method in config.benchmark_layout_methods],
-            self_challenging=config.self_challenging,
+            discriminate_by_critic=config.discriminate_by_critic,
+            replace_by_critic=config.replace_by_critic,
             alternating_mode=config.alternating_mode,
             generator_frequency=config.generator_frequency,
             discriminator_frequency=config.discriminator_frequency,
@@ -257,11 +259,6 @@ class SmartGDLightningModule(BaseLightningModule):
 
     def configure_callbacks(self) -> Union[L.Callback, list[L.Callback]]:
         return [
-            # PeriodicLRFinder(
-            #     interval=1,
-            #     num_training_steps=50,
-            #     # early_stop_threshold=None
-            # ),
             L.callbacks.LearningRateMonitor(
                 logging_interval="epoch",
                 log_momentum=True
@@ -324,39 +321,24 @@ class SmartGDLightningModule(BaseLightningModule):
             self.generator_optimizer(generator_steps)
         )
 
-    # def configure_optimizers(self) -> Any:
-    #     return dict(
-    #         optimizer=(optimizer := torch.optim.AdamW(
-    #             params=self.parameters(),
-    #             lr=1  # Set to 1 to allow LambdaLR to gain full control of lr
-    #         )),
-    #         lr_scheduler=dict(
-    #             name="generator_optimizer",
-    #             scheduler=torch.optim.lr_scheduler.LambdaLR(
-    #                 optimizer=optimizer,
-    #                 lr_lambda=lambda epoch: self.hparams.learning_rate,
-    #                 last_epoch=self.current_epoch - 1,
-    #                 verbose=True
-    #             ),
-    #             frequency=math.inf  # Only allow manual step() in the lr finder
-    #         )
-    #     )
+    def evaluate_layout(self, batch: GraphDrawingData, layout: GraphStruct, metric: Optional[CompositeCritic] = None):
+        metric = metric or self.critic
+        layout = batch.transform_struct(self.canonicalize, layout)
+        pred, score, raw_scores = self.discriminator(layout), metric(layout), metric.get_raw_scores()
+        return pred, score, raw_scores
 
     def training_step(self, batch: GraphDrawingData, batch_idx: int, optimizer_idx: int) -> dict:
-        fake_layout = batch.transform_struct(self.canonicalize, self(batch))
-        fake_pred = self.discriminator(fake_layout)
-        fake_score, fake_raw_scores = self.critic(fake_layout), self.critic.get_raw_scores()
-
-        real_layout = batch.make_struct(self.real_layout_store)
-        real_layout = batch.transform_struct(self.canonicalize, real_layout)
-        real_pred = self.discriminator(real_layout)
-        real_score = self.critic(real_layout)
+        fake_pred, fake_score, fake_raw_scores = self.evaluate_layout(batch, fake_layout := self(batch))
+        real_pred, real_score, real_raw_scores = self.evaluate_layout(batch, batch.make_struct(self.real_layout_store))
 
         positive, negative = real_score < fake_score, real_score > fake_score
-        good_pred = torch.cat([real_pred[positive], fake_pred[negative]])
-        bad_pred = torch.cat([fake_pred[positive], real_pred[negative]])
 
-        discriminator_loss = self.adversarial_criterion(encourage=good_pred, discourage=bad_pred)
+        if self.hparams.discriminate_by_critic:
+            good_pred = torch.cat([real_pred[positive], fake_pred[negative]])
+            bad_pred = torch.cat([fake_pred[positive], real_pred[negative]])
+            discriminator_loss = self.adversarial_criterion(encourage=good_pred, discourage=bad_pred)
+        else:
+            discriminator_loss = self.adversarial_criterion(encourage=real_pred, discourage=fake_pred)
         generator_loss = self.adversarial_criterion(encourage=fake_pred, discourage=real_pred)
 
         # TODO: match case
@@ -382,7 +364,7 @@ class SmartGDLightningModule(BaseLightningModule):
         batch = step_output["batch"]
         replacements = 0
         initial_replacements = 0
-        if self.hparams.self_challenging:
+        if self.hparams.replace_by_critic:
             for data in batch.to_data_list():
                 if data.flagged.item():
                     self.real_layout_store[data.name] = data.fake_pos.detach().cpu().numpy()
@@ -404,12 +386,8 @@ class SmartGDLightningModule(BaseLightningModule):
 
     def validation_step(self, batch: GraphDrawingData, batch_idx: int):
         real_layout = batch.make_struct(self.layout_syncer.load(**self.generate_real_layout_params()))
-        real_layout = batch.transform_struct(self.canonicalize, real_layout)
-        fake_layout = batch.transform_struct(self.canonicalize, self(batch))
-        fake_score = self.critic(fake_layout)
-        fake_human_score, fake_raw_scores = self.val_metric(fake_layout), self.val_metric.get_raw_scores()
-        real_score = self.critic(real_layout)
-        real_human_score, real_raw_scores = self.val_metric(real_layout), self.val_metric.get_raw_scores()
+        real_score, real_human_score, real_raw_scores = self.evaluate_layout(batch, real_layout, self.eval_metric)
+        fake_score, fake_human_score, fake_raw_scores = self.evaluate_layout(batch, self(batch), self.eval_metric)
         score_spc = self.spc(fake_score, real_score)
         human_score_spc = self.spc(fake_human_score, real_human_score)
         raw_scores_spc = {name: self.spc(fake_raw_scores[name], real_raw_scores[name]) for name in fake_raw_scores}

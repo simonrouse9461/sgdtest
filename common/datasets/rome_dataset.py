@@ -1,5 +1,5 @@
 from smartgd.constants import DATASET_ROOT
-from smartgd.common.data import GraphDrawingData
+from smartgd.common.data import BaseData, GraphDrawingData
 from .utils import s3_dataset_syncing
 
 import os
@@ -14,7 +14,7 @@ import torch_geometric as pyg
 import networkx as nx
 
 
-DATATYPE = TypeVar("DATATYPE", bound=pyg.data.Data)
+DATATYPE = TypeVar("DATATYPE", bound=BaseData)
 
 
 @s3_dataset_syncing  # TODO: make it work with multiple dataloader workers
@@ -36,7 +36,7 @@ class RomeDataset(pyg.data.InMemoryDataset):
         self.datatype: type[DATATYPE] = datatype
         super().__init__(
             root=os.path.join(root, name),
-            transform=self.datatype.transform,
+            transform=self.datatype.dynamic_transform,
             pre_transform=self.datatype.pre_transform,
             pre_filter=self.datatype.pre_filter
         )

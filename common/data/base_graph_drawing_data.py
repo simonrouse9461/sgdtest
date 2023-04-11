@@ -6,15 +6,14 @@ from .transforms import (
     GenerateEdgePairs,
     GeneratePermutationEdges,
     GenerateRandomLayout,
-    BatchAppendColumn,
     PopulateGraphAttrs,
     SampleAggregationEdges,
     GabrielGraph,
     RandomNeighborhoodGraph,
 )
+from .base_data import BaseData
 
 from typing import Any, Optional, Union, Iterable
-from itertools import permutations
 from dataclasses import dataclass
 
 import numpy as np
@@ -27,7 +26,7 @@ from typing_extensions import Self
 import networkx as nx
 
 
-class BaseGraphDrawingData(Data):
+class BaseGraphDrawingData(BaseData):
 
     @dataclass
     class Field:
@@ -35,7 +34,7 @@ class BaseGraphDrawingData(Data):
         transform: T.BaseTransform
         optional: bool = False
 
-    # Initialize
+    # Initialization  # TODO: move to BaseData
     G:                         nx.Graph = Field(stage="init", transform=NormalizeGraph())
     perm_index:                Tensor = Field(stage="init",
                                               transform=GeneratePermutationEdges(attr_name="perm_index"))
@@ -71,20 +70,20 @@ class BaseGraphDrawingData(Data):
                                                  ),
                                                  optional=True)
 
-    # transform (Memory/CPU Footprint -- Generated everytime when batch is sampled from the dataset)
-    aggr_metaindex:            Tensor = Field(stage="transform",
+    # dynamic_transform (Memory/CPU Footprint -- Generated everytime when batch is sampled from the dataset)
+    aggr_metaindex:            Tensor = Field(stage="dynamic_transform",
                                               transform=SampleAggregationEdges(attr_name="aggr_metaindex"))
-    pos:                       OptTensor = Field(stage="transform", transform=GenerateRandomLayout())
+    pos:                       OptTensor = Field(stage="dynamic_transform", transform=GenerateRandomLayout())
 
-    # dynamic_transform (Memory/CPU Footprint -- Generated everytime as needed)
+    # post_transform (Memory/CPU Footprint -- Generated everytime as needed)
     # TODO: raise exception if field is None, then catch the exception and perform corresponding transform
-    face:                      OptTensor = Field(stage="dynamic_transform",
+    face:                      OptTensor = Field(stage="post_transform",
                                                  transform=Delaunay(),
                                                  optional=True)
-    gabriel_index:             OptTensor = Field(stage="dynamic_transform",
+    gabriel_index:             OptTensor = Field(stage="post_transform",
                                                  transform=GabrielGraph(attr_name="gabriel_index"),
                                                  optional=True)
-    rng_index:                 OptTensor = Field(stage="dynamic_transform",
+    rng_index:                 OptTensor = Field(stage="post_transform",
                                                  transform=RandomNeighborhoodGraph(attr_name="rng_index"),
                                                  optional=True)
 
@@ -96,7 +95,7 @@ class BaseGraphDrawingData(Data):
     edge_attr:                 Tensor
     edge_weight:               Tensor
     edge_pair_index:           Tensor
-    # ---------------------------------------- transform
+    # -------------------------------- dynamic_transform
     aggr_index:                Tensor
     aggr_attr:                 Tensor
     aggr_weight:               Tensor
@@ -136,16 +135,6 @@ class BaseGraphDrawingData(Data):
         return self.perm_index.device
 
     @classmethod
-    def get_optional_fields(cls):
-        if not hasattr(cls, "_optional_fields"):
-            cls._optional_fields = []
-        return cls._optional_fields
-
-    @classmethod
-    def set_optional_fields(cls, fields: Optional[list] = None):
-        cls._optional_fields = [] if fields is None else fields
-
-    @classmethod
     def field_annotations(cls) -> dict[str, type]:
         return BaseGraphDrawingData.__annotations__
 
@@ -165,47 +154,11 @@ class BaseGraphDrawingData(Data):
         return dict(generate_fields())
 
     # noinspection PyPep8Naming
-    @classmethod
-    def new(cls, G: nx.Graph) -> Optional[Self]:
-        data = cls(G=G)
-        if data.pre_filter():
-            return data.pre_transform().static_transform().transform().dynamic_transform()
-        return None
-
-    # noinspection PyPep8Naming
     def __init__(self, G: Optional[nx.Graph] = None):
         super().__init__(G=G)
         if G is not None:  # Allow empty GraphDrawingData when constructing Batch
             self.num_nodes = self.G.number_of_nodes()
             T.Compose(self._transforms(stage="init"))(self)
-
-    def __inc__(self, key: str, value: Any, *args, **kwargs) -> Any:
-        if "metaindex" in key:
-            return self.perm_index.shape[1]
-        return super().__inc__(key, value, *args, **kwargs)
-
-    def __getattr__(self, key: str) -> Any:
-        if key not in self and key in self.field_annotations():
-            for suffix in ["index", "attr", "weight"]:
-                if key.endswith("_" + suffix):
-                    metaindex_key = key.replace(suffix, "metaindex")
-                    if metaindex_key not in self.field_annotations():
-                        continue
-                    indexer = getattr(self, metaindex_key)
-                    if indexer is None:
-                        return None
-                    if suffix == "index":
-                        indexer = slice(None), indexer
-                    return getattr(self, f"perm_{suffix}")[indexer]
-            else:
-                return None
-        return super().__getattr__(key)
-
-    def __getattribute__(self, key):
-        value = object.__getattribute__(self, key)
-        if isinstance(value, type(self).Field) or value is NotImplemented:
-            value = self.__getattr__(key)
-        return value
 
     def pre_filter(self) -> bool:
         assert not isinstance(self, Batch)
@@ -226,26 +179,25 @@ class BaseGraphDrawingData(Data):
         assert not isinstance(self, Batch)
         return T.Compose(self._transforms(stage="static_transform"))(self)
 
-    def transform(self) -> Self:
-        assert not isinstance(self, Batch)
-        return T.Compose(self._transforms(stage="transform"))(self)
-
     def dynamic_transform(self) -> Self:
-        transforms = T.Compose(self._transforms(stage="dynamic_transform"))
+        assert not isinstance(self, Batch)
+        return T.Compose(self._transforms(stage="dynamic_transform"))(self)
+
+    def post_transform(self) -> Self:
+        transforms = T.Compose(self._transforms(stage="post_transform"))
         if isinstance(self, Batch):
             return Batch.from_data_list(list(map(transforms, self.to_data_list())))
         return transforms(self)
 
-    def append(self, tensor: torch.Tensor, *, name: str, like: Optional[str] = None):
-        if like is not None:
-            self[name] = tensor.to(self[like])
-        else:
-            self[name] = tensor
-        if isinstance(self, Batch):
-            return BatchAppendColumn(
-                attr_name=name,
-                like=like,
-                dtype=tensor.dtype if like is None else None,
-                device=tensor.device if like is None else None
-            )(self)
+    def load_pos_dict(self, pos_dict: dict[str, np.ndarray]) -> Self:
+        names = self.name
+        if isinstance(names, str):
+            names = [names]
+        pos = np.concatenate(list(map(pos_dict.__getitem__, names)), axis=0)
+        self.pos = torch.tensor(pos).to(self.device).float()
         return self
+
+    def pos_dict(self) -> dict[str, np.ndarray]:
+        if isinstance(self, Batch):
+            return {data.name: data.pos.detach().cpu().numpy() for data in self.to_data_list()}
+        return {self.name: self.pos.detach().cpu().numpy()}
