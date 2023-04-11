@@ -21,6 +21,14 @@ class GraphDrawingData(BaseGraphDrawingData, DrawingMixin):
     def make_struct(self, value: Any = None) -> GraphStruct:
         return self._struct(value)
 
+    def load_pos_dict(self, pos_dict: dict[str, np.ndarray]) -> Self:
+        names = self.name
+        if isinstance(names, str):
+            names = [names]
+        pos = np.concatenate(list(map(pos_dict.__getitem__, names)), axis=0)
+        self.pos = torch.tensor(pos).to(self.device).float()
+        return self
+
     def pos_dict(self) -> dict[str, np.ndarray]:
         if isinstance(self, Batch):
             return {data.name: data.pos.detach().cpu().numpy() for data in self.to_data_list()}
@@ -71,11 +79,8 @@ class GraphDrawingData(BaseGraphDrawingData, DrawingMixin):
 
     @_struct.register
     def _(self, store: dict) -> GraphStruct:
-        names = self.name
-        if isinstance(names, str):
-            names = [names]
-        pos = np.concatenate(list(map(store.__getitem__, names)), axis=0)
-        return self._struct(pos)
+        self.load_pos_dict(store)
+        return self._struct(None)
 
     @_struct.register
     def _(self, struct: GraphStruct) -> GraphStruct:

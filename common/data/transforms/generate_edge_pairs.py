@@ -11,5 +11,6 @@ class GenerateEdgePairs(BaseTransform):
         self.attr_name = attr_name
 
     def __call__(self, data: Data) -> Data:
-        data[self.attr_name] = torch.combinations(data.edge_metaindex).T
+        unique_edge_metaindex = data.edge_metaindex[data.edge_index[0] < data.edge_index[1]]
+        data[self.attr_name] = torch.combinations(unique_edge_metaindex).T
         return data
