@@ -25,7 +25,7 @@ import numpy as np
 import torch
 from torch import nn
 import pytorch_lightning as L
-import torch_geometric as pyg
+from torch_geometric.data import Data, Batch
 from tqdm.auto import tqdm
 
 
@@ -159,13 +159,12 @@ class SmartGDLightningModule(BaseLightningModule):
         real_layout_metadata = {}
         print("Generating real layouts...")
         for data in tqdm(dataset, desc="Generate Real"):
-            data = data.post_transform(self.hparams.static_transform)
-            scores = torch.cat([
-                # TODO: merge data into batch first
-                critic(self.canonicalize(data.make_struct(store, post_transform=self.hparams.dynamic_transform)))
-                for layout, store in layout_stores.items()
+            batch = Batch.from_data_list([
+                data.load_pos_dict(pos_dict=store)
+                for store in layout_stores.values()
             ])
-            best_layout = list(layout_stores)[scores.argmin()]
+            score = self.evaluate_layout(batch)[1]
+            best_layout = list(layout_stores)[score.argmin()]
             real_layout_store[data.name] = layout_stores[best_layout][data.name]
             real_layout_metadata[data.name] = dict(method=best_layout)
         if not self.layout_syncer.exists(**layout_params):
@@ -321,7 +320,11 @@ class SmartGDLightningModule(BaseLightningModule):
             self.generator_optimizer(generator_steps)
         )
 
-    def evaluate_layout(self, batch: GraphDrawingData, layout: GraphStruct, metric: Optional[CompositeCritic] = None):
+    def evaluate_layout(self,
+                        batch: GraphDrawingData,
+                        layout: Optional[GraphStruct] = None,
+                        metric: Optional[CompositeCritic] = None):
+        layout = layout or batch.make_struct()
         metric = metric or self.critic
         layout = batch.transform_struct(self.canonicalize, layout)
         pred, score, raw_scores = self.discriminator(layout), metric(layout), metric.get_raw_scores()
