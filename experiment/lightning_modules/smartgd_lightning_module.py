@@ -72,6 +72,7 @@ class SmartGDLightningModule(BaseLightningModule):
         self.discriminator: Optional[nn.Module] = None
 
         # Data
+        GraphDrawingData.set_optional_fields(self.hparams.optional_data_fields)  # TODO: context manager
         self.init_layout_store: Optional[LayoutDict] = None
         self.real_layout_store: Optional[LayoutDict] = None
         self.fake_layout_store: LayoutDict = {}
@@ -147,10 +148,6 @@ class SmartGDLightningModule(BaseLightningModule):
         layout_params = self.generate_real_layout_params()
         if self.layout_syncer.exists(**layout_params):
             return
-        critic = CompositeCritic(
-            criteria_weights=self.hparams.criteria_weights,
-            batch_reduce=None
-        )
         layout_stores = {
             layout: self.layout_syncer.load(name=layout)
             for layout in self.hparams.real_layout_candidates
@@ -160,10 +157,17 @@ class SmartGDLightningModule(BaseLightningModule):
         print("Generating real layouts...")
         for data in tqdm(dataset, desc="Generate Real"):
             batch = Batch.from_data_list([
-                data.load_pos_dict(pos_dict=store)
+                data.clone().load_pos_dict(pos_dict=store)
                 for store in layout_stores.values()
             ])
-            score = self.evaluate_layout(batch)[1]
+            score = self.evaluate_layout(
+                batch=batch,
+                metric=CompositeCritic(
+                    criteria_weights=self.hparams.criteria_weights,
+                    batch_reduce=None
+                ),
+                discriminate=False
+            )[1]
             best_layout = list(layout_stores)[score.argmin()]
             real_layout_store[data.name] = layout_stores[best_layout][data.name]
             real_layout_metadata[data.name] = dict(method=best_layout)
@@ -199,7 +203,6 @@ class SmartGDLightningModule(BaseLightningModule):
             ))
 
     def setup(self, stage: str) -> None:
-        GraphDrawingData.set_optional_fields(self.hparams.optional_data_fields)
         super().setup(stage)
         if not self.generator:
             self.load_generator(self.hparams.generator)
@@ -323,11 +326,13 @@ class SmartGDLightningModule(BaseLightningModule):
     def evaluate_layout(self,
                         batch: GraphDrawingData,
                         layout: Optional[GraphStruct] = None,
-                        metric: Optional[CompositeCritic] = None):
+                        metric: Optional[CompositeCritic] = None,
+                        discriminate: bool = True):
         layout = layout or batch.make_struct()
         metric = metric or self.critic
         layout = batch.transform_struct(self.canonicalize, layout)
-        pred, score, raw_scores = self.discriminator(layout), metric(layout), metric.get_raw_scores()
+        score, raw_scores = metric(layout), metric.get_raw_scores()
+        pred = self.discriminator(layout) if discriminate else None
         return pred, score, raw_scores
 
     def training_step(self, batch: GraphDrawingData, batch_idx: int, optimizer_idx: int) -> dict:
