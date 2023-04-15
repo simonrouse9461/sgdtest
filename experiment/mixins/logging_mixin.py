@@ -9,6 +9,12 @@ class LoggingMixin(ABC):
     def log_dict(self, *args, **kwargs):
         return NotImplemented
 
+    def log_ckpt_criterion(self, value):
+        self.log_dict(dictionary=dict(ckpt_criterion=value),
+                      on_step=False,
+                      on_epoch=True,
+                      logger=True)
+
     def log_with_prefix(self, *,
                         prefix: str,
                         dictionary: dict,

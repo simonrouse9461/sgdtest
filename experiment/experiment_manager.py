@@ -166,7 +166,9 @@ class ExperimentManager:
         checkpoint_callback = ModelCheckpoint(
             dirpath=self.checkpoint_dir,
             filename=f"{{epoch}}-{{step}}",
-            # save_top_k=5,
+            monitor="ckpt_criterion",
+            mode="min",
+            save_top_k=5,
             save_last=True
         )
         # script_callback = ModelScript(

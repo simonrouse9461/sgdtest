@@ -391,6 +391,7 @@ class SmartGDLightningModule(BaseLightningModule):
         score_spc = self.spc(fake_score, real_score)
         human_score_spc = self.spc(fake_human_score, real_human_score)
         raw_scores_spc = {name: self.spc(fake_raw_scores[name], real_raw_scores[name]) for name in fake_raw_scores}
+        self.log_ckpt_criterion(fake_score.mean().item())
         self.log_val_step(
             score=fake_score.mean().item(),
             score_spc=score_spc.mean().item(),
