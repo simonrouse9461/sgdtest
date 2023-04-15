@@ -386,17 +386,21 @@ class SmartGDLightningModule(BaseLightningModule):
 
     def validation_step(self, batch: GraphDrawingData, batch_idx: int):
         real_layout = batch.make_struct(self.layout_syncer.load(**self.generate_real_layout_params()))
-        real_score, real_human_score, real_raw_scores = self.evaluate_layout(batch, real_layout, self.eval_metric)
-        fake_score, fake_human_score, fake_raw_scores = self.evaluate_layout(batch, self(batch), self.eval_metric)
+        _, real_score, real_raw_scores = self.evaluate_layout(batch, real_layout)
+        _, fake_score, fake_raw_scores = self.evaluate_layout(batch, self(batch))
+        _, real_human_pref, real_human_raw_scores = self.evaluate_layout(batch, real_layout, self.eval_metric)
+        _, fake_human_pref, fake_human_raw_scores = self.evaluate_layout(batch, self(batch), self.eval_metric)
+        real_raw_scores.update(real_human_raw_scores)
+        fake_raw_scores.update(fake_human_raw_scores)
         score_spc = self.spc(fake_score, real_score)
-        human_score_spc = self.spc(fake_human_score, real_human_score)
+        human_pref_spc = self.spc(fake_human_pref, real_human_pref)
         raw_scores_spc = {name: self.spc(fake_raw_scores[name], real_raw_scores[name]) for name in fake_raw_scores}
-        self.log_ckpt_criterion(fake_score.mean().item())
+        self.log_evaluation(fake_score.mean().item())
         self.log_val_step(
             score=fake_score.mean().item(),
             score_spc=score_spc.mean().item(),
-            human_preference_score=fake_human_score.mean().item(),
-            human_preference_score_spc=human_score_spc.mean().item(),
+            human_preference=fake_human_pref.mean().item(),
+            human_preference_spc=human_pref_spc.mean().item(),
             **{k: v.mean().item() for k, v in fake_raw_scores.items()},
             **{k + "_spc": v.mean().item() for k, v in raw_scores_spc.items()},
         )

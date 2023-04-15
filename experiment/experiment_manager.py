@@ -165,8 +165,8 @@ class ExperimentManager:
     def callbacks(self, *additional: Callback) -> list[Callback]:
         checkpoint_callback = ModelCheckpoint(
             dirpath=self.checkpoint_dir,
-            filename=f"{{epoch}}-{{step}}",
-            monitor="ckpt_criterion",
+            filename="{epoch}-{step}-{evaluation}",
+            monitor="evaluation",
             mode="min",
             save_top_k=5,
             save_last=True

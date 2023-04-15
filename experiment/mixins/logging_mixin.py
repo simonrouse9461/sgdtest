@@ -9,8 +9,8 @@ class LoggingMixin(ABC):
     def log_dict(self, *args, **kwargs):
         return NotImplemented
 
-    def log_ckpt_criterion(self, value):
-        self.log_dict(dictionary=dict(ckpt_criterion=value),
+    def log_evaluation(self, value):
+        self.log_dict(dictionary=dict(evaluation=value),
                       on_step=False,
                       on_epoch=True,
                       logger=True)
