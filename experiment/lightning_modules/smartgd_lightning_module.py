@@ -389,9 +389,8 @@ class SmartGDLightningModule(BaseLightningModule):
         )
 
     def validation_step(self, batch: GraphDrawingData, batch_idx: int):
-        print("Optional fields for validation:", GraphDrawingData.get_optional_fields())
         # TODO: evaluate scores in validation_epoch_end
-        real_layout = batch.make_struct(self.layout_syncer.load_layout_dict(**self.generate_real_layout_params()))
+        real_layout = batch.make_struct(self.real_layout_store)
         _, real_score, real_raw_scores = self.evaluate_layout(batch, real_layout)
         _, fake_score, fake_raw_scores = self.evaluate_layout(batch, self(batch))
         _, real_human_pref, real_human_raw_scores = self.evaluate_layout(batch, real_layout, self.eval_metric)
