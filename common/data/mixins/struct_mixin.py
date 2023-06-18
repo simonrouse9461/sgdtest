@@ -13,12 +13,22 @@ class StructMixin(BaseGraphDrawingData):
     def transform_struct(self, transform: Callable, struct: GraphStruct):
         return self.make_struct(transform(struct))
 
+    def apply_transform(self, transform: Callable):
+        struct = self.make_struct()
+        self.make_struct(transform(struct))
+        return self
+
     def make_struct(self, value: Any = None) -> GraphStruct:
         return self._struct(value)
 
+    # TODO: logic overlap with make_struct
+    def sync_pos(self, value: Any = None) -> None:
+        self._struct(value)
+        return self
+
     @singledispatchmethod
     def _struct(self, value: Any) -> GraphStruct:
-        raise NotImplementedError
+        raise NotImplementedError(f"Unknown type {type(value)}!")
 
     @_struct.register
     def _(self, pos: None) -> GraphStruct:

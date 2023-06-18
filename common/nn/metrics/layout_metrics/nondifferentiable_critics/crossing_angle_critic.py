@@ -2,7 +2,7 @@ from smartgd.constants import EPS
 from smartgd.common.data import GraphStruct
 from smartgd.common.nn.ops import EdgesIntersect
 from ..base_layout_metric import BaseLayoutMetric
-from ..composite_critic import CompositeCritic
+from ..composite_metric import CompositeMetric
 
 from typing import Optional
 
@@ -11,7 +11,7 @@ import torch.nn.functional as F
 import torch_scatter
 
 
-@CompositeCritic.register_critic("xangle")
+@CompositeMetric.register_metric("xangle")
 class CrossingAngleCritic(BaseLayoutMetric):
 
     def __init__(self, *,

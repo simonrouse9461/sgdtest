@@ -51,7 +51,7 @@ class BaseGraphDrawingData(BaseData):
     perm_weight:               Tensor = Field(stage="pre_transform",
                                               transform=compute_shortest_path)
 
-    # static_transform (Memory Footprint -- Generated everytime when dataset being loaded to memory)
+    # static_transform (Memory Footprint -- Generated everytime when dataset_name being loaded to memory)
     name:                      str = Field(stage="static_transform",
                                            transform=(populate_graph_attrs := PopulateGraphAttrs()))
     dataset:                   str = Field(stage="static_transform", transform=populate_graph_attrs)
@@ -70,7 +70,7 @@ class BaseGraphDrawingData(BaseData):
                                                  ),
                                                  optional=True)
 
-    # dynamic_transform (Memory/CPU Footprint -- Generated everytime when batch is sampled from the dataset)
+    # dynamic_transform (Memory/CPU Footprint -- Generated everytime when batch is sampled from the dataset_name)
     aggr_metaindex:            Tensor = Field(stage="dynamic_transform",
                                               transform=SampleAggregationEdges(attr_name="aggr_metaindex"))
     pos:                       OptTensor = Field(stage="dynamic_transform", transform=GenerateRandomLayout())

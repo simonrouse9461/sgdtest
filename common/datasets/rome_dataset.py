@@ -31,7 +31,7 @@ class RomeDataset(pyg.data.InMemoryDataset):
                  index: Optional[list[str]] = None,
                  datatype: type[DATATYPE] = GraphDrawingData):
         self.url: str = url
-        self.name: str = name
+        self.dataset_name: str = name
         self.index: Optional[list[str]] = index
         self.datatype: type[DATATYPE] = datatype
         super().__init__(
@@ -40,8 +40,12 @@ class RomeDataset(pyg.data.InMemoryDataset):
             pre_transform=self.datatype.pre_transform,
             pre_filter=self.datatype.pre_filter
         )
-        self.data, self.slices = torch.load(self.processed_paths[0])
+        self.data, self.slices = torch.load(self.data_path)
+        with open(self.index_path, "r") as index_file:
+            self.index = index_file.read().strip().split("\n")
         data_list = map(datatype.static_transform, tqdm(self, desc=f"Transform graphs"))
+        data_dict = {data.G.graph["name"]: data for data in data_list}
+        data_list = [data_dict[name] for name in self.index]
         self.data, self.slices = self.collate(list(data_list))
 
     def _parse_metadata(self, logfile: str) -> Iterator[str]:
@@ -61,6 +65,14 @@ class RomeDataset(pyg.data.InMemoryDataset):
     def processed_file_names(self) -> list[str]:
         return ["data.pt", "index.txt"]
 
+    @property
+    def data_path(self) -> str:
+        return self.processed_paths[0]
+
+    @property
+    def index_path(self) -> str:
+        return self.processed_paths[1]
+
     def generate(self) -> Iterator[nx.Graph]:
         def key(path):
             match = self.GRAPH_NAME_REGEX.search(path)
@@ -69,7 +81,7 @@ class RomeDataset(pyg.data.InMemoryDataset):
             G = nx.read_graphml(file)
             G.graph.update(dict(
                 name=self.GRAPH_NAME_REGEX.search(file).group(0),
-                dataset=self.name
+                dataset=self.dataset_name
             ))
             yield G
 
@@ -78,17 +90,21 @@ class RomeDataset(pyg.data.InMemoryDataset):
         pyg.data.extract_tar(f'{self.raw_dir}/rome-graphml.tgz', self.raw_dir)
 
     def process(self) -> None:
-        G_list = list(self.generate())
-        # TODO: reorder with index during initialization
-        if self.index is None:
-            self.index = [G.graph["name"] for G in G_list]
-        else:
-            G_dict = {G.graph["name"]: G for G in G_list}
-            G_list = [G_dict[name] for name in self.index]
-        data_list = map(self.datatype, tqdm(G_list, desc=f"Pre-transform graphs"))
-        data_list = filter(self.pre_filter, data_list)
+        def filter_and_save_index(data_list):
+            name_list = []
+            for data in data_list:
+                if self.pre_filter(data):
+                    name_list.append(data.G.graph["name"])
+                    yield data
+            if self.index is None:
+                self.index = name_list
+            else:
+                self.index = [name for name in self.index if name in name_list]
+            with open(self.index_path, "w") as index_file:
+                index_file.write("\n".join(self.index))
+
+        data_list = map(self.datatype, self.generate())
+        data_list = filter_and_save_index(data_list)
         data_list = map(self.pre_transform, data_list)
         data, slices = self.collate(list(data_list))
         torch.save((data, slices), self.processed_paths[0])
-        with open(self.processed_paths[1], "w") as index_file:
-            index_file.write("\n".join(self.index))

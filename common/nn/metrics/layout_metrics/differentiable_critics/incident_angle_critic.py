@@ -1,7 +1,7 @@
 from smartgd.common.data import GraphStruct
 from smartgd.common.nn.ops import SparseSort
 from ..base_layout_metric import BaseLayoutMetric
-from ..composite_critic import CompositeCritic
+from ..composite_metric import CompositeMetric
 
 from typing import Optional
 
@@ -11,7 +11,7 @@ import numpy as np
 import torch_scatter
 
 
-@CompositeCritic.register_critic("iangle")
+@CompositeMetric.register_metric("iangle")
 class IncidentAngle(BaseLayoutMetric):
 
     def __init__(self, *, batch_reduce: Optional[str] = "mean"):

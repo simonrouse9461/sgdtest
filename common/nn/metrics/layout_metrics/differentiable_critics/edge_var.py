@@ -1,6 +1,6 @@
 from smartgd.common.data import GraphStruct
 from ..base_layout_metric import BaseLayoutMetric
-from ..composite_critic import CompositeCritic
+from ..composite_metric import CompositeMetric
 
 from typing import Optional
 
@@ -8,8 +8,8 @@ import torch
 import torch_scatter
 
 
-@CompositeCritic.register_critic("absedge", abs_edge_len=1.)
-@CompositeCritic.register_critic("edge")
+@CompositeMetric.register_metric("absedge", abs_edge_len=1.)
+@CompositeMetric.register_metric("edge")
 class EdgeVar(BaseLayoutMetric):
 
     def __init__(self, *,

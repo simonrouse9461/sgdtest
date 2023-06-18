@@ -11,13 +11,13 @@ _CriticCls = Type[_Critic]
 _PresetFunc = Callable[..., Dict[str, float]]
 
 
-class CompositeCritic(BaseLayoutMetric):
+class CompositeMetric(BaseLayoutMetric):
 
     _critic_registry: Dict[str, _Critic] = {}
     _preset_registry: Dict[str, Dict[str, float]] = {}
 
     @classmethod
-    def register_critic(cls, _name: str, /, *args, **kwargs) -> Callable[[_CriticCls], _CriticCls]:
+    def register_metric(cls, _name: str, /, *args, **kwargs) -> Callable[[_CriticCls], _CriticCls]:
         def decorator(critic_cls: _CriticCls) -> _CriticCls:
             cls._critic_registry[_name] = critic_cls(*args, **kwargs, batch_reduce=None)
             return critic_cls
@@ -63,14 +63,14 @@ class CompositeCritic(BaseLayoutMetric):
         }
 
 
-@CompositeCritic.register_preset("stress_only")
+@CompositeMetric.register_preset("stress_only")
 def stress_only() -> Dict[str, float]:
     return {
         'stress': 1.
     }
 
 
-@CompositeCritic.register_preset("human_preference")
+@CompositeMetric.register_preset("human_preference")
 def human_preference() -> Dict[str, float]:
     return {
         'stress': 0.00029434361190166397,

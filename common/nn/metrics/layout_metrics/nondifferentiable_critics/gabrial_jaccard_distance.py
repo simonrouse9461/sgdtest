@@ -1,6 +1,6 @@
 from smartgd.common.data import GraphStruct
 from ..base_layout_metric import BaseLayoutMetric
-from ..composite_critic import CompositeCritic
+from ..composite_metric import CompositeMetric
 from ...jaccard_index import JaccardIndex
 
 from typing import Optional
@@ -8,7 +8,7 @@ from typing import Optional
 import torch
 
 
-@CompositeCritic.register_critic("gabrial")
+@CompositeMetric.register_metric("gabrial")
 class GabrialJaccardDistance(BaseLayoutMetric):
 
     def __init__(self, *, batch_reduce: Optional[str] = "mean"):

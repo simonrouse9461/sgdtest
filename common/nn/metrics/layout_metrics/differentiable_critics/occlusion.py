@@ -1,6 +1,6 @@
 from smartgd.common.data import GraphStruct
 from ..base_layout_metric import BaseLayoutMetric
-from ..composite_critic import CompositeCritic
+from ..composite_metric import CompositeMetric
 
 from typing import Optional
 
@@ -8,7 +8,7 @@ import torch
 import torch_scatter
 
 
-@CompositeCritic.register_critic("ring")
+@CompositeMetric.register_metric("ring")
 class Occlusion(BaseLayoutMetric):
 
     def __init__(self, *, gamma: float = 1., batch_reduce: Optional[str] = "mean"):

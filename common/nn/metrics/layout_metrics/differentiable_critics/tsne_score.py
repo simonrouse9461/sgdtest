@@ -1,6 +1,6 @@
 from smartgd.common.data import GraphStruct
 from ..base_layout_metric import BaseLayoutMetric
-from ..composite_critic import CompositeCritic
+from ..composite_metric import CompositeMetric
 
 from typing import Optional
 
@@ -9,7 +9,7 @@ import torch_scatter
 
 
 # TODO: scale invariance
-@CompositeCritic.register_critic("tsne")
+@CompositeMetric.register_metric("tsne")
 class TSNEScore(BaseLayoutMetric):
 
     def __init__(self, *,

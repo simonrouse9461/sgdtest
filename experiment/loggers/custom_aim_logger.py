@@ -1,18 +1,29 @@
 from smartgd.constants import (
     AIMSTACK_SERVER_URL, TRAIN_PREFIX, VAL_PREFIX, TEST_PREFIX
 )
-
+import re
 from typing import Optional, Any
 
 from pytorch_lightning.utilities import rank_zero_only
 from pytorch_lightning.loggers.logger import rank_zero_experiment
 from aim.pytorch_lightning import AimLogger
-from aim.sdk.run import Run
+from aim.sdk import Run, Repo
 
 
 class CustomAimLogger(AimLogger):
+    """Custom AimLogger that supports copying from another run.
+    example:
+    - Create a new run when `run_hash` is None.
+    - `run_hash` can be `copy:abc123` to copy from run `abc123`.
+    - Use `last` to continue the last run, or `copy:last` to copy from the last run.
+    """
+
+    RUN_HASH_ALIAS_LAST = "last"
+    RUN_HASH_OP_PREFIX_COPY = "copy"
+    RUN_HASH_OP_SEP = ":"
 
     def __init__(self, *,
+                 experiment_name: Optional[str] = None,
                  run_hash: Optional[str] = None,
                  step_metrix_suffix: Optional[str] = "_step",
                  epoch_metrix_suffix: Optional[str] = "_epoch",
@@ -20,16 +31,69 @@ class CustomAimLogger(AimLogger):
                  **kwargs):
         super().__init__(
             repo=f"aim://{AIMSTACK_SERVER_URL}",
+            experiment=experiment_name,
             train_metric_prefix=TRAIN_PREFIX,
             val_metric_prefix=VAL_PREFIX,
             test_metric_prefix=TEST_PREFIX,
+            run_hash=run_hash,
             **kwargs
         )
+        self._repo = None
 
-        self._run_hash = run_hash
+        # Lookup experiment group and version by `run_hash` if `run_hash` is not None.
+        self._run_hash, self._copy_from = self._parse_run_hash(run_hash).values()
+        self._run_hash = self._resolve_run_hash(self._run_hash)
+        self._copy_from = self._resolve_run_hash(self._copy_from)
+        self._experiment_name = self._resolve_experiment_name()
+
         self._step_metrix_suffix = step_metrix_suffix
         self._epoch_metrix_suffix = epoch_metrix_suffix
         self._force_resume = force_resume
+
+        if self._copy_from and (hparams := self.repo.get_run(self._copy_from).get('hparams')):
+            self.experiment['hparams'] = hparams
+
+    @property
+    def repo(self) -> Repo:
+        if self._repo is None:
+            self._repo = Repo(path=self._repo_path)
+        return self._repo
+
+    def _parse_run_hash(self, run_hash: Optional[str]) -> dict[str, Any]:
+        copy_prefix = self.RUN_HASH_OP_PREFIX_COPY + self.RUN_HASH_OP_SEP
+        copy_from = None
+        if run_hash and run_hash.startswith(copy_prefix):
+            copy_from = run_hash[len(copy_prefix):]
+            run_hash = None
+        return dict(run_hash=run_hash, copy_from=copy_from)
+
+    def _resolve_run_hash(self, run_hash: Optional[str]) -> str:
+        if run_hash == self.RUN_HASH_ALIAS_LAST:
+            assert self._experiment_name is not None, (
+                f"Experiment group and name must be specified when using alias '{self.RUN_HASH_ALIAS_LAST}'."
+            )
+            runs = filter(lambda run: run.experiment == self._experiment_name, self.repo.iter_runs())
+            runs = sorted(runs, key=lambda run: run.creation_time)
+            assert runs, f"No runs found for experiment '{self._experiment_name}'."
+            return runs[-1].hash
+        return run_hash
+
+    def _resolve_experiment_name(self):
+        assert not (self._copy_from and self._run_hash)
+        if src_hash := self._copy_from or self._run_hash:
+            src_run = self.repo.get_run(src_hash)
+            experiment_name = src_run.experiment
+        else:
+            assert self._experiment_name is not None, (
+                "Experiment group and name must be specified when `run_hash` is None."
+            )
+            experiment_name = self._experiment_name
+        if self._experiment_name is not None:
+            assert self._experiment_name == experiment_name, (
+                f"Experiment name='{self._experiment_name}' does not match "
+                f"the original experiment name '{experiment_name}'."
+            )
+        return experiment_name
 
     @property
     @rank_zero_experiment
@@ -86,3 +150,7 @@ class CustomAimLogger(AimLogger):
                 context['aggr'] = 'epoch'
 
             self.experiment.track(v, name=name, step=step, epoch=epoch, context=context)
+
+    @property
+    def name(self) -> str:
+        return self.experiment.experiment

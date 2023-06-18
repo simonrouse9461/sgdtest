@@ -1,136 +1,118 @@
 from smartgd.constants import (
-    LIGHTNING_S3_BUCKET, AIMSTACK_UI_URL
+    CKPT_S3_BUCKET, AIMSTACK_UI_URL
 )
-from .callbacks import SaveMetadata
-from .loggers import CustomAimLogger
+from . import BaseLightningModule, SaveMetadata, UploadPredictions, CustomAimLogger
 
 import os
 import textwrap
-from typing import Optional, Any
+from typing import Optional, Any, Iterable
+from pprint import pformat
 
 import natsort
+from deepdiff import DeepDiff
+from deepdiff.operator import BaseOperator
 from rich.console import Console
 from rich.markdown import Markdown
 from aim.pytorch_lightning import AimLogger
 from lightning_lite.utilities import cloud_io
 # TODO: import lightning as L
 from pytorch_lightning.callbacks import Callback, ModelCheckpoint
-from pytorch_lightning.loggers import TensorBoardLogger, Logger
+from pytorch_lightning.loggers import Logger
 
 
+# TODO implement context manager
 class ExperimentManager:
 
-    LAST_RUN_HASH_ALIAS = "last"
+    aim: AimLogger
 
     def __init__(self, *,
-                 experiment_name: Optional[str] = None,  # TODO: rename to experiment_group
-                 experiment_version: Optional[str] = None,  # TODO: rename to experiment_name
+                 experiment_group: Optional[str] = None,
+                 experiment_name: Optional[str] = None,
                  experiment_description: Optional[str] = None,
                  run_hash: Optional[str] = None,
                  run_name: Optional[str] = None,
                  run_description: Optional[str] = None,
+                 pretrain_run_hash: Optional[str] = None,
                  force_resume: bool = False):
-        # TODO: lookup experiment name and version by `run_hash`
-        self._set_up_tensorboard(
-            experiment_name=experiment_name,
-            experiment_version=experiment_version
+        experiment_group = experiment_group or "default_experiment"
+        self.aim = CustomAimLogger(experiment_name=(f"{experiment_group}.{experiment_name}"
+                                                    if experiment_group and experiment_name else None),
+                                   run_hash=run_hash,
+                                   force_resume=force_resume)
+        self.fs = cloud_io.get_filesystem(self.checkpoint_dir)
+        self.pretrain_run_hash = pretrain_run_hash
+
+        if experiment_description:
+            self.experiment_description = experiment_description
+        if run_name:
+            self.run_name = run_name
+        if run_description:
+            self.run_description = run_description
+
+        self.checkpoint_callback = ModelCheckpoint(
+            dirpath=self.checkpoint_dir,
+            filename="{epoch}-{step}-{evaluation}",
+            monitor="evaluation",
+            mode="min",
+            save_top_k=5,
+            save_last=True
         )
-        self._set_up_aim(
-            experiment_description=experiment_description,
-            run_hash=run_hash,
-            run_name=run_name,
-            run_description=run_description,
-            force_resume=force_resume
+
+        self.prediction_callback = UploadPredictions(
+            run_hash=self.run_hash
         )
+
+        # TODO: save metadata
+
         self.print_info()
-        self._update_metadata()
-
-    def _set_up_tensorboard(self, *, experiment_name, experiment_version):
-        self.tensorboard: TensorBoardLogger = TensorBoardLogger(save_dir=f"s3://{LIGHTNING_S3_BUCKET}",
-                                                                name=experiment_name,
-                                                                version=experiment_version)
-        self.fs = cloud_io.get_filesystem(self.log_dir)
-        self.experiment_meta_callback = SaveMetadata(dirpath=self.log_dir)
-
-    def _set_up_aim(self, *, experiment_description, run_hash, run_name, run_description, force_resume):
-        self.aim: AimLogger = CustomAimLogger(experiment=f"{self.experiment_name}/{self.experiment_version}",
-                                              run_hash=self._resolve_run_hash(run_hash),
-                                              force_resume=force_resume)
-        self.experiment_description = experiment_description or (
-            self.experiment_metadata["experiment_description"]
-            if self.experiment_metadata is not None
-            else None
-        )
-        self.run_name = run_name or self.experiment_version
-        self.run_description = run_description or experiment_description
-        self.run_meta_callback = SaveMetadata(dirpath=self.checkpoint_dir)
-
-    def _resolve_run_hash(self, run_hash: str):
-        if run_hash == self.LAST_RUN_HASH_ALIAS:
-            run_hash = self.experiment_metadata["last_run_hash"] if self.experiment_metadata is not None else None
-        return run_hash
-
-    def _update_metadata(self):
-        self.experiment_meta_callback.update_metadata(dict(
-            experiment_name=self.experiment_name,
-            experiment_version=self.experiment_version,
-            experiment_description=self.experiment_description,
-            last_run_hash=self.run_hash
-        ))
-        self.run_meta_callback.update_metadata(dict(
-            run_name=self.run_name,
-            run_hash=self.run_hash,
-            run_description=self.run_description
-        ))
 
     def print_info(self):
         console = Console()
         console.print(Markdown(textwrap.dedent(f"""
         # SmartGD Experiment
-        * **Experiment Name**: {self.experiment_name}
-        * **Experiment Version**: {self.experiment_version}
+        * **Experiment Group**: `{self.experiment_group}`
+        * **Experiment Name**: `{self.experiment_name}`
         * **Experiment Description**: {self.experiment_description}
-        * **Run Name**: {self.run_name}
-        * **Run Hash**: {self.run_hash}
+        * **Run Hash**: `{self.run_hash}`
+        * **Run Name**: `{self.run_name}`
         * **Run Description**: {self.run_description}
         * **Tracking URL**: [{self.tracking_url}]({self.tracking_url})
         """)))
 
     @property
     def tracking_url(self) -> str:
-        return f"{AIMSTACK_UI_URL}/runs/{self.run_hash}"
-
-    @property
-    def log_dir(self) -> str:
-        return self.tensorboard.log_dir
+        return f"http://{AIMSTACK_UI_URL}/runs/{self.run_hash}"
 
     @property
     def checkpoint_dir(self) -> str:
-        return f"{self.log_dir}/checkpoints/{self.run_hash}"
+        return f"s3://{CKPT_S3_BUCKET}/{self.run_hash}"
+
+    @property
+    def pretrain_checkpoint_dir(self) -> Optional[str]:
+        if self.pretrain_run_hash:
+            return f"s3://{CKPT_S3_BUCKET}/{self.pretrain_run_hash}"
+        return None
+
+    @property
+    def experiment_group(self) -> str:
+        return self.aim.name.split(".")[0]
 
     @property
     def experiment_name(self) -> str:
-        return self.tensorboard.name
-
-    @property
-    def experiment_version(self) -> str:
-        raw_version = self.tensorboard.version
-        return raw_version if isinstance(raw_version, str) else f"version_{raw_version}"
+        return self.aim.name.split(".")[1]
 
     @property
     def experiment_description(self) -> Optional[str]:
-        # return self.aim.experiment.props.experiment_obj.description # this is not supported yet
-        return self._experiment_description
+        # TODO: this is not supported for remote repo yet
+        try:
+            return self.aim.experiment.props.experiment_obj.description
+        except Exception as e:
+            return f'{type(e).__name__}: {e}'
 
     @experiment_description.setter
-    def experiment_description(self, value: Optional[str]):
-        # if value:
-        #     self.aim.experiment.props.experiment_obj.description = value # this is not supported yet
-        self._experiment_description = value
-
-    @property
-    def experiment_metadata(self) -> Optional[dict[str, Any]]:
-        return self.experiment_meta_callback.load_metadata()
+    def experiment_description(self, value: str):
+        # TODO: this is not supported for remote repo yet
+        self.aim.experiment.props.experiment_obj.description = value
 
     @property
     def run_hash(self) -> str:
@@ -142,61 +124,75 @@ class ExperimentManager:
 
     @run_name.setter
     def run_name(self, value: Optional[str]):
-        if value:
-            self.aim.experiment.name = value
+        self.aim.experiment.name = value
 
     @property
     def run_description(self) -> str:
         return self.aim.experiment.description
 
     @run_description.setter
-    def run_description(self, value: Optional[str]):
-        if value:
-            self.aim.experiment.description = value
+    def run_description(self, value: str):
+        self.aim.experiment.description = value
 
     @property
-    def run_metadata(self) -> Optional[dict[str, Any]]:
-        return self.run_meta_callback.load_metadata()
+    def hyperparameters(self) -> Optional[dict[str, Any]]:
+        return self.aim.experiment.get('hparams')
 
-    def loggers(self, *additional: Logger) -> list[Logger]:
-        managed: list[Logger] = [self.tensorboard, self.aim]
-        return managed + list(additional)
+    @property
+    def loggers(self) -> list[Logger]:
+        return [self.aim]
 
-    def callbacks(self, *additional: Callback) -> list[Callback]:
-        checkpoint_callback = ModelCheckpoint(
-            dirpath=self.checkpoint_dir,
-            filename="{epoch}-{step}-{evaluation}",
-            monitor="evaluation",
-            mode="min",
-            save_top_k=5,
-            save_last=True
-        )
-        # script_callback = ModelScript(
-        #     dirpath=f"{self.log_dir}/scripts",
-        #     modules=["generator", "discriminator"]
-        # )
-        managed: list[Callback] = [
-            checkpoint_callback,
-            self.experiment_meta_callback,
-            self.run_meta_callback
+    @property
+    def callbacks(self) -> list[Callback]:
+        return [
+            self.checkpoint_callback,
+            self.prediction_callback,
         ]
-        return managed + list(additional)
+
+    def _get_last_ckpt(self, ckpt_root: str) -> Optional[str]:
+        last_ckpts = natsort.natsorted(self.fs.glob(f"{ckpt_root}/last-v*.ckpt"), reverse=True)
+        last_ckpt = f"{ckpt_root}/last.ckpt"
+        if len(last_ckpts) > 0:
+            return f"{ckpt_root}/{os.path.basename(last_ckpts[0])}"
+        if self.fs.exists(last_ckpt):
+            return f"{ckpt_root}/{os.path.basename(last_ckpt)}"
+        return None
 
     @property
     def last_ckpt_path(self) -> Optional[str]:
-        last_ckpts = natsort.natsorted(self.fs.glob(f"{self.checkpoint_dir}/last-v*.ckpt"), reverse=True)
-        last_ckpt = f"{self.checkpoint_dir}/last.ckpt"
-        if len(last_ckpts) > 0:
-            return f"{self.checkpoint_dir}/{os.path.basename(last_ckpts[0])}"
-        if self.fs.exists(last_ckpt):
-            return f"{self.checkpoint_dir}/{os.path.basename(last_ckpt)}"
-        return None
+        return self._get_last_ckpt(self.checkpoint_dir)
+
+    def create_module(self, module_cls: type[BaseLightningModule], **kwargs) -> BaseLightningModule:
+        class ListTupleMatchOperator(BaseOperator):
+            def give_up_diffing(self, level, diff_instance):
+                if isinstance(level.t1, tuple):
+                    level.t1 = list(level.t1)
+                if isinstance(level.t2, tuple):
+                    level.t2 = list(level.t2)
+        if self.pretrain_checkpoint_dir:
+            module = module_cls.load_from_checkpoint(
+                checkpoint_path=self._get_last_ckpt(self.pretrain_checkpoint_dir),
+                **kwargs
+            )
+        else:
+            module = module_cls(**kwargs)
+        if self.hyperparameters:
+            diff = DeepDiff(
+                t1=self.hyperparameters, t2=dict(module.hparams),
+                custom_operators=[ListTupleMatchOperator(types=[Iterable])]
+            )
+            assert not diff, f"Hyperparameters mismatch:\n{pformat(diff.to_dict())}"
+            module.load_hyperparameters(self.hyperparameters)
+        return module
 
     def trainer_init_args(self, *,
                           loggers: Optional[list[Logger]] = None,
                           callbacks: Optional[list[Callback]] = None) -> dict[str, Any]:
-        return dict(logger=self.loggers(*loggers or []),
-                    callbacks=self.callbacks(*callbacks or []))
+        return dict(logger=self.loggers + (loggers or []),
+                    callbacks=self.callbacks + (callbacks or []))
 
-    def trainer_fit_args(self) -> dict[str, Any]:
+    def trainer_run_args(self) -> dict[str, Any]:
         return dict(ckpt_path=self.last_ckpt_path)
+
+    def close(self) -> None:
+        self.aim.experiment.close()

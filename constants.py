@@ -1,7 +1,10 @@
 # Model artifact settings
-LIGHTNING_S3_BUCKET = "smartgd-lightning-logs"
+CKPT_S3_BUCKET = "smartgd-checkpoints"
 MODEL_S3_BUCKET = "smartgd-models"
-PREDICTION_S3_BUCKET = "smartgd-predictions"
+ASSET_S3_BUCKET = "smartgd-predictions"
+DYNAMODB_REGION = "us-east-1"
+LAYOUTS_DB_PREFIX = "smartgd-layouts."
+ALIAS_DB_NAME = "smartgd-layout-method-aliases"
 
 # Dataset settings
 DATASET_ROOT = "datasets"
@@ -9,7 +12,7 @@ DATASET_S3_BUCKET = "smartgd-datasets"
 
 # AimStack settings
 AIMSTACK_SERVER_URL = "experiments.xiaoqiwang.net:53800"
-AIMSTACK_UI_URL = "http://experiments.xiaoqiwang.net"
+AIMSTACK_UI_URL = "experiments.xiaoqiwang.net:80"
 AIMSTACK_S3_BUCKET = "smartgd-aim-repo"
 
 # Experiment constants
