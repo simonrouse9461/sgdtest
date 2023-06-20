@@ -23,6 +23,8 @@ from pytorch_lightning.loggers import Logger
 # TODO implement context manager
 class ExperimentManager:
 
+    EXPERIMENT_NAME_SEP = " / "
+
     aim: AimLogger
 
     def __init__(self, *,
@@ -35,13 +37,16 @@ class ExperimentManager:
                  pretrain_run_hash: Optional[str] = None,
                  force_resume: bool = False):
         experiment_group = experiment_group or "default_experiment"
-        self.aim = CustomAimLogger(experiment_name=(f"{experiment_group}.{experiment_name}"
+        self.aim = CustomAimLogger(experiment_name=(f"{experiment_group}{self.EXPERIMENT_NAME_SEP}{experiment_name}"
                                                     if experiment_group and experiment_name else None),
                                    run_hash=run_hash,
                                    force_resume=force_resume)
         self.fs = cloud_io.get_filesystem(self.checkpoint_dir)
         self.pretrain_run_hash = pretrain_run_hash
 
+        # TODO: This logic should be moved to `CustomAimLogger`?
+        self.aim.experiment.set('experiment_group', experiment_group)
+        self.aim.experiment.set('experiment_name', experiment_name)
         if experiment_description:
             self.experiment_description = experiment_description
         if run_name:
@@ -95,11 +100,11 @@ class ExperimentManager:
 
     @property
     def experiment_group(self) -> str:
-        return self.aim.name.split(".")[0]
+        return self.aim.name.split(self.EXPERIMENT_NAME_SEP)[0]
 
     @property
     def experiment_name(self) -> str:
-        return self.aim.name.split(".")[1]
+        return self.aim.name.split(self.EXPERIMENT_NAME_SEP)[1]
 
     @property
     def experiment_description(self) -> Optional[str]:

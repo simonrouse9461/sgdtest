@@ -11,8 +11,8 @@ DATASET_ROOT = "datasets"
 DATASET_S3_BUCKET = "smartgd-datasets"
 
 # AimStack settings
-AIMSTACK_SERVER_URL = "experiments.xiaoqiwang.net:53800"
-AIMSTACK_UI_URL = "experiments.xiaoqiwang.net:80"
+AIMSTACK_SERVER_URL = "smartgd.xiaoqiwang.net:53800"
+AIMSTACK_UI_URL = "smartgd.xiaoqiwang.net:80/experiments"
 AIMSTACK_S3_BUCKET = "smartgd-aim-repo"
 
 # Experiment constants
